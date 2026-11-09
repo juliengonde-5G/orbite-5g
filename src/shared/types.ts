@@ -59,6 +59,20 @@ export interface Skill {
   name: string;
   detail: string;
   level: 1 | 2 | 3 | 4 | null;
+  /** Identifiants ÉcoleDirecte de l'élément de programme et de la compétence, stables d'une évaluation à l'autre. */
+  elemId?: string;
+  competenceId?: string;
+  /** Attendu de fin de cycle. */
+  afc?: boolean;
+  /** Valeur brute reçue (« 2 », « A », « Abs »…), gardée quand elle n'est pas un niveau de 1 à 4. */
+  raw?: string;
+}
+
+/** Échelle de compétences de l'établissement : libellé et couleur de chaque niveau. */
+export interface SkillLevel {
+  level: 1 | 2 | 3 | 4;
+  label: string;
+  color: string | null;
 }
 
 /** Les champs optionnels reprennent ceux d'ÉcoleDirecte, qui peuvent manquer. */
@@ -120,6 +134,8 @@ export interface Child {
   photo?: string | null;
   notes: Note[];
   periods: Period[];
+  /** Échelle de compétences propre à l'établissement, si ÉcoleDirecte la fournit. */
+  skillScale?: SkillLevel[];
   /** Message affiché à la place des notes quand cet élève n'a pas pu être chargé. */
   error?: string;
   homework?: Homework[];

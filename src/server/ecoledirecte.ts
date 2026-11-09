@@ -50,6 +50,7 @@ import type {
   SchoolInfo,
   SchoolLife,
   Skill,
+  SkillLevel,
 } from '../shared/types.ts';
 
 /** Message tel que lu sur ÉcoleDirecte, avant les droits et repères propres à Orbite. */
@@ -162,6 +163,9 @@ interface RawSkill {
   libelleCompetence?: string;
   descriptif?: string;
   valeur?: unknown;
+  idElemProg?: unknown;
+  idCompetence?: unknown;
+  afc?: unknown;
 }
 
 export interface RawNotesData {
@@ -172,6 +176,14 @@ export interface RawNotesData {
     affichageNote?: boolean;
     affichageMoyenneDevoir?: boolean;
     coefficientNote?: boolean;
+    libelleEval1?: unknown;
+    libelleEval2?: unknown;
+    libelleEval3?: unknown;
+    libelleEval4?: unknown;
+    couleurEval1?: unknown;
+    couleurEval2?: unknown;
+    couleurEval3?: unknown;
+    couleurEval4?: unknown;
   };
   notes?: RawNote[];
   periodes?: RawPeriod[];
@@ -1013,7 +1025,11 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
  * de l'établissement sont respectés : une moyenne ou une note masquée sur
  * ÉcoleDirecte devient `null` (ou disparaît) dans Orbite.
  */
-export function normalizeNotes(data: RawNotesData | null = {}): { periods: Period[]; notes: Note[] } {
+export function normalizeNotes(data: RawNotesData | null = {}): {
+  periods: Period[];
+  notes: Note[];
+  skillScale?: SkillLevel[];
+} {
   const settings = data?.parametrage || {};
   const periodes = records<RawPeriod>(data?.periodes);
   const rawNotes = records<RawNote>(data?.notes);
@@ -1021,7 +1037,9 @@ export function normalizeNotes(data: RawNotesData | null = {}): { periods: Perio
   // `coef: 0`. On les compte alors avec un coefficient 1 au lieu de les exclure.
   const hiddenCoefficients =
     settings.coefficientNote === false || (rawNotes.length > 0 && rawNotes.every((n) => !(number(n.coef) ?? 0)));
+  const scale = skillScale(settings);
   return {
+    ...(scale.length ? { skillScale: scale } : {}),
     periods: periodes.map((p) => ({
       id: p.codePeriode || p.idPeriode,
       label: p.periode,
@@ -1115,19 +1133,56 @@ export function normalizeTimetable(data: unknown): Course[] {
 
 /**
  * Compétences d'une évaluation. Le niveau n'est retenu que s'il vaut 1 à 4 ;
- * une compétence non évaluée garde `level: null` pour rester visible sans être comptée.
+ * une compétence non positionnée garde `level: null` (jamais un échec) et sa
+ * valeur brute. Les identifiants d'ÉcoleDirecte sont conservés : ils permettent
+ * de reconnaître la même compétence d'une évaluation à l'autre.
  */
 export function skills(value: unknown): Skill[] {
+  const id = (v: unknown) =>
+    (typeof v === 'number' && v > 0) || (typeof v === 'string' && /^\d{1,12}$/.test(v) && v !== '0');
   return records<RawSkill>(value)
     .map((s) => {
       const level = number(s.valeur);
-      return {
+      const valid = level !== null && Number.isInteger(level) && level >= 1 && level <= 4;
+      const raw = String(s.valeur ?? '')
+        .trim()
+        .slice(0, 20);
+      const skill: Skill = {
         name: String(s.libelleCompetence || '').trim(),
         detail: String(s.descriptif || '').trim(),
-        level: level !== null && Number.isInteger(level) && level >= 1 && level <= 4 ? (level as Skill['level']) : null,
+        level: valid ? (level as Skill['level']) : null,
       };
+      if (id(s.idElemProg)) skill.elemId = String(s.idElemProg);
+      if (id(s.idCompetence)) skill.competenceId = String(s.idCompetence);
+      if (s.afc === 1 || s.afc === true || s.afc === '1') skill.afc = true;
+      if (!valid && raw) skill.raw = raw;
+      return skill;
     })
     .filter((s) => s.name || s.detail);
+}
+
+/**
+ * Échelle de l'établissement : libellés en base64 (« Maîtrise fragile »…) et
+ * couleurs, qui varient d'un collège à l'autre. On se fie au rang, jamais à la couleur.
+ */
+export function skillScale(settings: NonNullable<RawNotesData['parametrage']>): SkillLevel[] {
+  const levels: SkillLevel[] = [];
+  for (const level of [1, 2, 3, 4] as const) {
+    const encoded = settings[`libelleEval${level}`];
+    let label = '';
+    if (typeof encoded === 'string' && encoded)
+      try {
+        label = Buffer.from(encoded, 'base64')
+          .toString('utf8')
+          .replace(/[\p{Cc}]/gu, '')
+          .trim()
+          .slice(0, 60);
+      } catch {}
+    const color = settings[`couleurEval${level}`];
+    if (label)
+      levels.push({ level, label, color: typeof color === 'string' && /^#[0-9a-f]{3,8}$/i.test(color) ? color : null });
+  }
+  return levels.length === 4 ? levels : [];
 }
 
 /** État « effectué » d'un devoir, quel que soit son encodage (booléen, 0/1, chaîne) ; `null` si inconnu. */
