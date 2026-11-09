@@ -21,7 +21,7 @@ import { noteKey, parisDate, parisHour } from '../shared/metrics.ts';
 import type { EdMail } from './ecoledirecte.ts';
 import type { Family, MemberRecord } from './family.ts';
 import type { Vault } from './vault.ts';
-import type { Course, Dashboard, PushPrefs, PushStatus, SchoolLife } from '../shared/types.ts';
+import type { Course, Dashboard, LifeKind, PushPrefs, PushStatus, SchoolLife } from '../shared/types.ts';
 
 export interface PushMessage {
   title: string;
@@ -339,31 +339,55 @@ export class Notifier {
           `mail:${child.id}`,
           box.map((m) => m.id),
         );
-        for (const m of box.filter((m) => added.has(m.id) && !m.read).slice(0, 3)) {
-          const message = { body: `${m.from} : ${m.subject}`, url: '/#messages', tag: `mail-${child.id}-${m.id}` };
-          this.enqueue(this.kidsOf(child.id), { ...message, title: 'Nouveau message' }, 'mail');
-          this.enqueue(this.parents, { ...message, title: `${who(child.name)}Nouveau message` }, 'mail');
+        const unread = box.filter((m) => added.has(m.id) && !m.read);
+        for (const message of mailMessages(unread, `mail-${child.id}`)) {
+          this.enqueue(this.kidsOf(child.id), message, 'mail');
+          this.enqueue(this.parents, { ...message, title: who(child.name) + message.title }, 'mail');
         }
       }
-      // Vie scolaire.
+      // Vie scolaire : on écarte d'abord ce qui ne se notifie pas, puis on résume au-delà de trois.
       const life = await this.options.ed.schoolLife(child.id).catch(() => null);
       if (life) {
         const added = this.fresh(
           `life:${child.id}`,
           life.events.map((e) => e.id),
         );
-        for (const e of life.events.filter((e) => added.has(e.id)).slice(0, 3)) {
-          const message = { url: '/#vie-scolaire', tag: `life-${child.id}-${e.id}` };
-          if (e.kind === 'encouragement') {
-            const body = e.title || e.type || 'Bravo !';
-            this.enqueue(this.kidsOf(child.id), { ...message, title: 'Encouragement', body }, 'life');
-            this.enqueue(this.parents, { ...message, title: `${who(child.name)}Encouragement`, body }, 'life');
-          } else if (e.kind !== 'autre') {
-            const label = { absence: 'Absence', retard: 'Retard', punition: 'Punition', sanction: 'Sanction' }[e.kind];
-            const body = [e.title || e.type, e.reason].filter(Boolean).join(' · ') || 'Voir le détail dans Orbite';
-            this.enqueue(this.parents, { ...message, title: `${child.name} · ${label}`, body }, 'life');
-          }
+        const events = life.events.filter((e) => added.has(e.id) && e.kind !== 'autre');
+        const url = '/#vie-scolaire';
+        const cheers = events.filter((e) => e.kind === 'encouragement');
+        if (cheers.length) {
+          const body =
+            cheers.length === 1
+              ? cheers[0]?.title || cheers[0]?.type || 'Bravo !'
+              : `${cheers.length} encouragements : ${cheers
+                  .map((e) => e.title || e.type)
+                  .filter(Boolean)
+                  .slice(0, 3)
+                  .join(', ')}`;
+          const title = cheers.length === 1 ? 'Encouragement' : 'Encouragements';
+          const tag = `life-${child.id}-cheer-${cheers[0]?.id ?? ''}`;
+          this.enqueue(this.kidsOf(child.id), { title, body, url, tag }, 'life');
+          this.enqueue(this.parents, { title: who(child.name) + title, body, url, tag }, 'life');
         }
+        const alerts = events.filter((e) => e.kind !== 'encouragement');
+        if (alerts.length > 3) {
+          const counts = new Map<string, number>();
+          for (const e of alerts) counts.set(LIFE_LABEL[e.kind], (counts.get(LIFE_LABEL[e.kind]) ?? 0) + 1);
+          const body = [...counts].map(([label, n]) => `${n} ${label.toLowerCase()}${n > 1 ? 's' : ''}`).join(', ');
+          this.enqueue(
+            this.parents,
+            { title: `${child.name} · Vie scolaire`, body, url, tag: `life-${child.id}-batch-${alerts[0]?.id ?? ''}` },
+            'life',
+          );
+        } else
+          for (const e of alerts) {
+            const body = [e.title || e.type, e.reason].filter(Boolean).join(' · ') || 'Voir le détail dans Orbite';
+            this.enqueue(
+              this.parents,
+              { title: `${child.name} · ${LIFE_LABEL[e.kind]}`, body, url, tag: `life-${child.id}-${e.id}` },
+              'life',
+            );
+          }
       }
     }
     // Messages de la famille (parents).
@@ -373,12 +397,11 @@ export class Notifier {
         'mail:famille',
         family.map((m) => m.id),
       );
-      for (const m of family.filter((m) => added.has(m.id) && !m.read).slice(0, 3))
-        this.enqueue(
-          this.parents,
-          { title: 'Nouveau message', body: `${m.from} : ${m.subject}`, url: '/#messages', tag: `mail-f-${m.id}` },
-          'mail',
-        );
+      for (const message of mailMessages(
+        family.filter((m) => added.has(m.id) && !m.read),
+        'mail-f',
+      ))
+        this.enqueue(this.parents, message, 'mail');
     }
     this.save();
     await this.flush();
@@ -458,6 +481,37 @@ export class Notifier {
     timer.unref();
     return timer;
   }
+}
+
+const LIFE_LABEL: Record<LifeKind, string> = {
+  absence: 'Absence',
+  retard: 'Retard',
+  punition: 'Punition',
+  sanction: 'Sanction',
+  encouragement: 'Encouragement',
+  autre: 'Événement',
+};
+
+/** Jusqu'à trois messages : une notification chacun ; au-delà, une seule qui les résume tous. */
+function mailMessages(list: EdMail[], tag: string): PushMessage[] {
+  if (list.length <= 3)
+    return list.map((m) => ({
+      title: 'Nouveau message',
+      body: `${m.from} : ${m.subject}`,
+      url: '/#messages',
+      tag: `${tag}-${m.id}`,
+    }));
+  return [
+    {
+      title: `${list.length} nouveaux messages`,
+      body: `${list
+        .slice(0, 3)
+        .map((m) => m.subject)
+        .join(' · ')} …`,
+      url: '/#messages',
+      tag: `${tag}-batch-${list[0]?.id ?? ''}`,
+    },
+  ];
 }
 
 const weekday = (date: string): number => new Date(date + 'T12:00:00Z').getUTCDay();

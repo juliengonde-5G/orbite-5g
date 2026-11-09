@@ -295,3 +295,47 @@ test('notifications : file d’envoi — échec retenté sans doublon, heures ca
     rmSync(t.dir, { recursive: true, force: true });
   }
 });
+
+test('notifications : au-delà de trois nouveautés, un résumé plutôt qu’un oubli', async () => {
+  const now = { value: new Date('2026-11-04T15:00:00Z') };
+  const t = setup(now);
+  try {
+    await t.notifier.scan();
+    const mail = (id: string) =>
+      ({
+        id,
+        subject: `Sujet ${id}`,
+        from: 'Direction',
+        fromRole: 'staff',
+        date: '',
+        read: false,
+        files: [],
+      }) as EdMail;
+    t.data.mail.famille = ['1', '2', '3', '4'].map(mail);
+    t.data.life['1:21'] = {
+      events: [
+        { id: 'a1', kind: 'autre', type: 'Info' },
+        { id: 'a2', kind: 'autre', type: 'Info' },
+        { id: 'a3', kind: 'autre', type: 'Info' },
+        { id: 's1', kind: 'sanction', type: 'Exclusion de cours', title: 'Exclusion de cours', reason: '' },
+      ] as never,
+    };
+    t.data.life['1:22'] = {
+      events: ['r1', 'r2', 'r3', 'r4'].map((id) => ({ id, kind: 'retard', title: '10 min' })) as never,
+    };
+    await t.notifier.scan();
+    const papa = to(t.sent, 1);
+    assert.ok(
+      papa.some((m) => m.title === '4 nouveaux messages'),
+      'le quatrième message n’est pas perdu',
+    );
+    assert.ok(
+      papa.some((m) => m.title === 'Léo · Sanction' && m.body === 'Exclusion de cours'),
+      'une sanction derrière trois événements sans intérêt est bien envoyée',
+    );
+    assert.ok(papa.some((m) => m.title === 'Nina · Vie scolaire' && m.body === '4 retards'));
+    assert.ok(!papa.some((m) => /Événement/.test(m.title)), 'les événements « autre » ne sont pas notifiés');
+  } finally {
+    rmSync(t.dir, { recursive: true, force: true });
+  }
+});
