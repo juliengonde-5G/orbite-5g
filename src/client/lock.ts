@@ -215,6 +215,62 @@ function activation(ctx: LockContext, who: Who, name: string, color: string | un
   setTimeout(() => input.focus(), 50);
 }
 
+/** Installation hors de la maison : code affiché dans le journal du conteneur, puis PIN. */
+function setupCode(ctx: LockContext, m: Member): void {
+  const input = h('input.code-input', {
+    type: 'text',
+    autocomplete: 'off',
+    autocapitalize: 'characters',
+    spellcheck: 'false',
+    maxlength: 9,
+    placeholder: 'XXXX-XXXX',
+    'aria-label': 'Code d’installation',
+  });
+  input.addEventListener('input', () => {
+    const raw = input.value
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 8);
+    input.value = raw.length > 4 ? raw.slice(0, 4) + '-' + raw.slice(4) : raw;
+  });
+  const error = h('p.form-error', { role: 'alert' });
+  show(
+    ctx,
+    h(
+      'form.activation',
+      {
+        style: { '--accent': `var(--c-${m.color})` },
+        onsubmit: (e: Event) => {
+          e.preventDefault();
+          const code = input.value;
+          if (code.replace('-', '').length !== 8) {
+            error.textContent = 'Le code fait 8 caractères.';
+            return;
+          }
+          choosePin(
+            ctx,
+            `Choisis ton code, ${m.name}`,
+            m.color,
+            (pin) => api.setup(m.id, pin, code),
+            () => pick(ctx),
+          );
+        },
+      },
+      h(
+        'button.icon-button.pin-back',
+        { type: 'button', 'aria-label': 'Retour aux profils', onclick: () => pick(ctx) },
+        icon('back'),
+      ),
+      h('h1.pin-title', 'Installation'),
+      h('p.lock-text', 'Entre le code d’installation affiché dans le journal du conteneur « orbite » sur le Synology.'),
+      input,
+      error,
+      h('button.button.button-primary', { type: 'submit' }, 'Continuer'),
+    ),
+  );
+  setTimeout(() => input.focus(), 50);
+}
+
 function openMember(ctx: LockContext, m: Member): void {
   const who = { memberId: m.id };
   if (m.hasPin) {
@@ -230,15 +286,7 @@ function openMember(ctx: LockContext, m: Member): void {
     );
   } else if (m.admin && ctx.session.setupNeeded) {
     if (!ctx.session.onLan) {
-      show(
-        ctx,
-        h(
-          'section.notice-block',
-          h('h1.pin-title', 'Installation à terminer'),
-          h('p.lock-text', 'Ouvre Orbite depuis le Wi-Fi de la maison pour choisir ton code.'),
-          h('button.button', { type: 'button', onclick: () => pick(ctx) }, 'Retour'),
-        ),
-      );
+      setupCode(ctx, m);
       return;
     }
     choosePin(

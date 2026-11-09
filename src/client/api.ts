@@ -46,7 +46,8 @@ async function call<T>(method: 'GET' | 'POST', path: string, data?: unknown): Pr
 
 export const api = {
   session: () => call<SessionInfo>('GET', '/api/session'),
-  setup: (memberId: string, pin: string) => call<SessionInfo>('POST', '/api/setup', { memberId, pin }),
+  setup: (memberId: string, pin: string, code?: string) =>
+    call<SessionInfo>('POST', '/api/setup', { memberId, pin, ...(code ? { code } : {}) }),
   login: (who: { memberId?: string; name?: string }, pin: string) =>
     call<SessionInfo>('POST', '/api/login', { ...who, pin }),
   activate: (who: { memberId?: string; name?: string }, code: string, pin: string) =>

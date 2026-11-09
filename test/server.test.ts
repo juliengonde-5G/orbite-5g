@@ -180,6 +180,8 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
     assert.deepEqual(s.body.members, []);
     s = await stranger.post('/api/setup', { memberId: admin.id, pin: '482916' }, internet);
     assert.equal(s.status, 403);
+    s = await stranger.post('/api/setup', { memberId: admin.id, pin: '482916', code: 'ZZZZ-ZZZZ' }, internet);
+    assert.equal(s.status, 403);
 
     // PIN trop simple refusé, puis installation depuis la maison.
     s = await julien.post('/api/setup', { memberId: admin.id, pin: '123456' });
@@ -363,6 +365,27 @@ test('fichiers statiques sur liste blanche et santé', async () => {
     }
     const health = await b.get('/healthz', { host: 'nas' });
     assert.equal(health.body.ok, true);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('installation à distance avec le code du journal, à usage unique', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const phone = app.browser();
+    const admin = (await app.browser().get('/api/session')).body.members.find((m: any) => m.admin);
+    const code = new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode ?? '';
+    assert.equal(code.length, 8);
+    const formatted = code.slice(0, 4).toLowerCase() + '-' + code.slice(4);
+    let s = await phone.post('/api/setup', { memberId: admin.id, pin: '482916', code: formatted }, internet);
+    assert.equal(s.status, 200);
+    assert.equal(s.body.me.admin, true);
+    assert.equal(new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode, undefined);
+    s = await app.browser().post('/api/setup', { memberId: admin.id, pin: '730519', code: formatted }, internet);
+    assert.equal(s.status, 403);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

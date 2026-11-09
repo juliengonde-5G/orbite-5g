@@ -18,7 +18,7 @@ Lecture seule : Orbite ne modifie rien sur ÉcoleDirecte. Les cases cochées res
 
 1. Créer le dossier `/volume1/docker/orbite/data` (File Station).
 2. Container Manager → **Projet** → **Créer** : nom `orbite`, chemin `/docker/orbite`, source « Créer docker-compose.yml », coller [`docker-compose.yml`](docker-compose.yml) et adapter `ORBITE_FAMILY`.
-3. Ouvrir `http://<adresse-du-NAS>:3210` **depuis le Wi-Fi de la maison** : le parent administrateur choisit son PIN (c'est la seule étape impossible depuis Internet).
+3. Ouvrir Orbite : le parent administrateur choisit son PIN. Depuis le Wi-Fi de la maison (`http://<adresse-du-NAS>:3210`), rien d'autre n'est demandé ; depuis Internet, il faut le code d'installation à usage unique affiché dans le journal du conteneur « orbite » (Container Manager).
 4. Réglages → ÉcoleDirecte → Connecter, puis répondre à la question de sécurité.
 5. Réglages → Famille : créer un code d'activation pour chaque membre. Chacun l'entre sur son téléphone et choisit son PIN. Les enfants sont reliés à leur fiche ÉcoleDirecte automatiquement par le prénom.
 

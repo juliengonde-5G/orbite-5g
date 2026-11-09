@@ -20,7 +20,7 @@
  * Aucun secret n'est renvoyé au navigateur.
  */
 import http from 'node:http';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { isIP } from 'node:net';
@@ -166,7 +166,13 @@ interface ChecksDoc {
 interface SecretDoc {
   version: 1;
   secret: string;
+  /** Code d'installation à usage unique, valable tant que l'administrateur n'a pas choisi son PIN. */
+  setupCode?: string;
 }
+
+const SETUP_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const normalizeCode = (value: unknown) =>
+  typeof value === 'string' ? value.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
 
 export function createApp(options: AppOptions): http.Server {
   const { vault } = options;
@@ -190,6 +196,16 @@ export function createApp(options: AppOptions): http.Server {
     secretDoc.secret = randomBytes(32).toString('hex');
     vault.save('secret', secretDoc);
   }
+  // Installation à distance : le code s'affiche dans le journal du conteneur, que
+  // seul un administrateur du NAS peut lire. Depuis la maison, il n'est pas demandé.
+  if (family.setupNeeded && !secretDoc.setupCode) {
+    secretDoc.setupCode = Array.from({ length: 8 }, () => SETUP_ALPHABET[randomInt(SETUP_ALPHABET.length)]).join('');
+    vault.save('secret', secretDoc);
+  }
+  if (family.setupNeeded && options.background && secretDoc.setupCode)
+    console.log(
+      `Code d’installation (parent administrateur) : ${secretDoc.setupCode.slice(0, 4)}-${secretDoc.setupCode.slice(4)}`,
+    );
   const background = options.background ? ed.startBackground() : undefined;
   const loginAttempts: number[] = [];
 
@@ -325,10 +341,19 @@ export function createApp(options: AppOptions): http.Server {
     [
       'POST /api/setup',
       async (ctx) => {
-        if (!ctx.onLan)
-          throw new HttpError('L’installation se termine depuis le Wi-Fi de la maison, pas depuis Internet.', 403);
         throttle();
+        const expected = secretDoc.setupCode ?? '';
+        const given = normalizeCode(ctx.data.code);
+        const codeOk =
+          expected.length === 8 && given.length === 8 && timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+        if (!ctx.onLan && !codeOk)
+          throw new HttpError(
+            'Code d’installation incorrect. Il figure dans le journal du conteneur « orbite » (Container Manager).',
+            403,
+          );
         const token = family.claimAdmin(ctx.data.memberId, ctx.data.pin);
+        delete secretDoc.setupCode;
+        vault.save('secret', secretDoc);
         setCookies(ctx, token);
         ctx.me = family.authenticate(token);
         return sessionInfo(ctx);
