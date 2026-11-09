@@ -6,7 +6,7 @@
  * aucune donnée réelle. N'importe quel identifiant est accepté, sans question.
  */
 import { parisDate } from '../shared/metrics.ts';
-import type { EdFile, EdMail, EdMailDetail, Factor, SavedAuth } from './ecoledirecte.ts';
+import type { EdDocument, EdFile, EdMail, EdMailDetail, Factor, SavedAuth } from './ecoledirecte.ts';
 import type { EdClient } from './ed-service.ts';
 import type {
   AuthResult,
@@ -16,9 +16,11 @@ import type {
   Dashboard,
   Homework,
   HomeworkPage,
+  Lesson,
   Note,
   SchoolInfo,
   SchoolLife,
+  SubjectAverage,
 } from '../shared/types.ts';
 
 const SUBJECTS = [
@@ -32,6 +34,14 @@ const SUBJECTS = [
   'TECHNOLOGIE',
 ];
 const TITLES = ['Contrôle', 'Interrogation écrite', 'Devoir maison', 'Évaluation', 'Exposé', 'Quiz'];
+const LESSONS = [
+  'Correction du devoir maison, puis début du chapitre 4 : les proportions.',
+  'Lecture analytique de la scène 2. Relevé des procédés comiques.',
+  'Révision du prétérit. Exercices oraux par groupes.',
+  'Activité documentaire sur la Révolution industrielle, trace écrite dans le cahier.',
+  'Expérience : la dissolution du sel. Schéma à compléter.',
+];
+
 const TASKS = [
   'Exercices 4 et 5 page 82.',
   'Apprendre la leçon sur les fractions.',
@@ -154,6 +164,7 @@ function student(id: string, name: string, className: string, level: number, dri
       coefficient: rand() < 0.25 ? 2 : 1,
       classAverage: Math.round((11 + rand() * 3) * (outOf / 20) * 10) / 10,
       excluded: false,
+      ...(rand() < 0.2 ? { comment: COMMENTS[Math.floor(rand() * COMMENTS.length)] ?? '' } : {}),
       skills:
         rand() < 0.6
           ? [
@@ -178,10 +189,59 @@ function student(id: string, name: string, className: string, level: number, dri
       { level: 4, label: 'Très bonne maîtrise', color: '#1a9f63' },
     ],
     periods: [
-      { id: 'A001', label: 'Trimestre 1', start: day(-70), end: day(-61), average: null, classAverage: null },
-      { id: 'A002', label: 'Trimestre 2', start: day(-60), end: day(30), average: null, classAverage: null },
+      {
+        id: 'A001',
+        label: 'Trimestre 1',
+        start: day(-70),
+        end: day(-61),
+        average: null,
+        classAverage: null,
+        councilDate: day(-58),
+        councilTime: '17:30',
+        mainTeacher: 'Mme Ferrand',
+        subjects: officialAverages(notes.filter((n) => n.period === 'A001')),
+      },
+      {
+        id: 'A002',
+        label: 'Trimestre 2',
+        start: day(-60),
+        end: day(30),
+        average: null,
+        classAverage: null,
+        councilDate: day(36),
+        councilTime: '17:30',
+        mainTeacher: 'Mme Ferrand',
+      },
     ],
   };
+}
+
+const COMMENTS = [
+  'Bon travail, raisonnement clair.',
+  'Des erreurs d’inattention, relis-toi.',
+  'Leçon à revoir avant le prochain contrôle.',
+  'Très bonne participation à l’oral.',
+];
+
+/** Moyennes « officielles » de démonstration, calculées comme le ferait le collège. */
+function officialAverages(notes: Note[]): SubjectAverage[] {
+  const by = new Map<string, Note[]>();
+  for (const n of notes) by.set(n.subjectId, [...(by.get(n.subjectId) ?? []), n]);
+  return [...by].map(([id, list]) => {
+    const pts = list.reduce((a, n) => a + ((n.value ?? 0) / (n.outOf ?? 20)) * 20 * (n.coefficient ?? 1), 0);
+    const coef = list.reduce((a, n) => a + (n.coefficient ?? 1), 0);
+    const avg = Math.round((pts / coef) * 100) / 100;
+    return {
+      id,
+      label: list[0]?.subject ?? id,
+      average: avg,
+      classAverage: 12.4,
+      min: 6.5,
+      max: 18.2,
+      coefficient: 1,
+      teachers: ['M. Durand'],
+    };
+  });
 }
 
 export class DemoEd implements EdClient {
@@ -235,6 +295,19 @@ export class DemoEd implements EdClient {
       homeworkNext: null,
       homeworkUntil: day(29),
     };
+  }
+  async lessonsForChild(childId: string, date: string): Promise<Lesson[]> {
+    const weekday = new Date(date + 'T12:00:00Z').getUTCDay();
+    if (weekday === 0 || weekday === 6) return [];
+    const rand = seeded(Number(date.replace(/-/g, '')) + Number(childId.slice(-1)));
+    return SUBJECTS.filter(() => rand() < 0.45).map((subject, i) => ({
+      id: `${date}:${i}`,
+      date,
+      subject,
+      teacher: ['M. Durand', 'Mme Ferrand', 'Mme Lopez', 'M. Petit'][i % 4] ?? '',
+      text: LESSONS[Math.floor(rand() * LESSONS.length)] ?? '',
+      documents: rand() < 0.2 ? ['Diaporama-du-cours.pdf'] : [],
+    }));
   }
   async timetableForChild(childId: string, from: string): Promise<Course[]> {
     const weekday = new Date(from + 'T12:00:00Z').getUTCDay();
@@ -293,8 +366,30 @@ export class DemoEd implements EdClient {
     if (!found) throw new Error('Message introuvable.');
     return found;
   }
-  async mailFile(fileId: string): Promise<EdFile> {
+  async mailFile(_childId: string | null, fileId: string): Promise<EdFile> {
     return { type: 'application/pdf', name: `piece-${fileId}.pdf`, body: DEMO_PDF };
+  }
+  async documents(): Promise<EdDocument[]> {
+    const kids: [string, string][] = [
+      ['1:21', 'Léo'],
+      ['1:22', 'Nina'],
+      ['1:23', 'Malo'],
+    ];
+    return [
+      ...kids.map(([childId, name], i) => ({
+        id: String(900 + i),
+        name: `Bulletin du 1er trimestre – ${name}`,
+        date: day(-55),
+        kind: 'bulletin' as const,
+        childId,
+        fileType: 'Note',
+      })),
+      { id: '910', name: 'Certificat de scolarité', date: day(-62), kind: 'admin', childId: '1:21', fileType: '' },
+      { id: '911', name: 'Règlement intérieur', date: day(-66), kind: 'admin', childId: null, fileType: '' },
+    ];
+  }
+  async documentFile(): Promise<EdFile> {
+    return { type: 'application/pdf', name: 'document.pdf', body: DEMO_PDF };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const n = Number(childId.slice(-1));

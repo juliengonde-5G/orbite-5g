@@ -42,8 +42,10 @@ import type {
   Homework,
   HomeworkPage,
   Course,
+  DocKind,
   LifeEvent,
   LifeKind,
+  Lesson,
   MailFile,
   Note,
   Period,
@@ -51,6 +53,7 @@ import type {
   SchoolLife,
   Skill,
   SkillLevel,
+  SubjectAverage,
 } from '../shared/types.ts';
 
 /** Message tel que lu sur ÉcoleDirecte, avant les droits et repères propres à Orbite. */
@@ -66,6 +69,16 @@ export interface EdMail {
 
 export interface EdMailDetail extends EdMail {
   text: string;
+}
+
+export interface EdDocument {
+  id: string;
+  name: string;
+  date: string;
+  kind: DocKind;
+  childId: string | null;
+  /** Valeur `leTypeDeFichier` attendue au téléchargement (serveur seulement). */
+  fileType: string;
 }
 
 export interface EdFile {
@@ -123,6 +136,13 @@ interface RawDiscipline {
   discipline?: string;
   libelleMatiere?: string;
   sousMatiere?: boolean;
+  groupeMatiere?: boolean;
+  moyenne?: unknown;
+  moyenneClasse?: unknown;
+  moyenneMin?: unknown;
+  moyenneMax?: unknown;
+  coef?: unknown;
+  professeurs?: { nom?: string }[];
 }
 
 interface RawPeriod {
@@ -132,7 +152,11 @@ interface RawPeriod {
   annuel?: boolean;
   dateDebut?: string;
   dateFin?: string;
+  cloture?: boolean;
+  dateConseil?: string;
+  heureConseil?: string;
   ensembleMatieres?: {
+    nomPP?: string;
     moyenneGenerale?: unknown;
     moyenneClasse?: unknown;
     disciplines?: RawDiscipline[];
@@ -155,6 +179,7 @@ interface RawNote {
   moyenneClasse?: unknown;
   enLettre?: boolean;
   nonSignificatif?: boolean;
+  commentaire?: unknown;
   elementsProgramme?: RawSkill[];
 }
 
@@ -173,6 +198,11 @@ export interface RawNotesData {
     affichageMoyenne?: boolean;
     moyenneGenerale?: boolean;
     moyenneClasse?: boolean;
+    moyenneEleve?: boolean;
+    moyenneMin?: boolean;
+    moyenneMax?: boolean;
+    moyenneCoefMatiere?: boolean;
+    moyenneUniquementPeriodeCloture?: boolean;
     affichageNote?: boolean;
     affichageMoyenneDevoir?: boolean;
     coefficientNote?: boolean;
@@ -207,8 +237,10 @@ interface RawHomeworkTask {
 interface RawHomeworkSubject {
   id?: Id;
   matiere?: string;
+  nomProf?: string;
   interrogation?: boolean;
   aFaire?: RawHomeworkTask;
+  contenuDeSeance?: { contenu?: unknown; documents?: { libelle?: string }[] };
 }
 
 interface HomeworkEntry extends RawHomeworkEntry {
@@ -642,6 +674,18 @@ export class EcoleDirecte {
     });
   }
 
+  /** Contenu des séances d'un jour (« ce qui a été fait en classe »). */
+  lessonsForChild(childId: string, date: string): Promise<Lesson[]> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<{ matieres?: unknown }>(
+        `Eleves/${encodeURIComponent(studentId)}/cahierdetexte/${date}.awp?verbe=get`,
+        {},
+      );
+      if (Number(body.code) !== 200) throw new EdError('Cahier de textes indisponible.');
+      return normalizeLessons(date, body.data?.matieres);
+    });
+  }
+
   /** Informations de l'établissement (post-its de l'accueil ÉcoleDirecte). */
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]> {
     return this.forChild(childId, async (studentId) => {
@@ -739,14 +783,58 @@ export class EcoleDirecte {
   }
 
   /** Pièce jointe d'un message, limitée à 20 Mo. */
-  async mailFile(fileId: string): Promise<EdFile> {
+  /** Pièce jointe d'un message de la boîte famille (`childId === null`) ou de celle d'un élève. */
+  async mailFile(childId: string | null, fileId: string): Promise<EdFile> {
     if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
     if (!/^\d{1,12}$/.test(fileId)) throw new EdError('Pièce jointe introuvable.', 404);
-    const response = await this.send(
-      `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
-      { forceDownload: 0 },
-      false,
+    // Le détail du message peut venir du cache : on réactive le bon établissement avant de télécharger.
+    const run = () =>
+      this.download(
+        `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
+      );
+    return childId === null ? this.forFamily(run) : this.forChild(childId, run);
+  }
+
+  /**
+   * Documents de l'année (bulletins, vie scolaire, administratifs, factures) du compte famille.
+   * Les élèves sont rattachés par `idEleve` ; un document sans élève reconnu reste « famille ».
+   */
+  documents(): Promise<EdDocument[]> {
+    return this.forFamily(async () => {
+      const students = new Map<string, string>();
+      for (const account of this.accounts)
+        for (const s of account.typeCompte === 'E' ? [account] : records<RawStudent>(account.profile?.eleves))
+          students.set(String(s.id), `${account.id}:${s.id}`);
+      let last: unknown;
+      // Compte famille d'abord ; `elevesDocuments` pour un compte élève (documenté, non vérifié en famille).
+      for (const path of ['familledocuments.awp?archive=&verbe=get', 'elevesDocuments.awp?archive=&verbe=get']) {
+        try {
+          const body = await this.request<unknown>(path, {});
+          if (Number(body.code) !== 200) throw new EdError('Documents indisponibles.');
+          return normalizeDocuments(body.data, students);
+        } catch (e) {
+          if ((e as EdError).status === 401) throw e;
+          last = e;
+        }
+      }
+      throw last instanceof EdError ? last : new EdError('Documents indisponibles.');
+    });
+  }
+
+  /** Télécharge un document de `documents()` ; `fileType` est le champ `type` de la liste (« Note », « Facture »…). */
+  async documentFile(id: string, fileType: string): Promise<EdFile> {
+    if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
+    if (!/^\d{1,12}$/.test(id) || !/^\w{0,40}$/.test(fileType)) throw new EdError('Document introuvable.', 404);
+    // La liste vient d'un cache : entre-temps, un autre établissement a pu devenir le contexte actif.
+    return this.forFamily(() =>
+      this.download(
+        `telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=${fileType}&archive=false&anneeArchive=`,
+      ),
     );
+  }
+
+  private async download(query: string): Promise<EdFile> {
+    const response = await this.send(query, { forceDownload: 0 }, false);
     const type = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0]?.trim() ?? '';
     if (/json|text\/html/i.test(type)) {
       let code: unknown;
@@ -757,7 +845,7 @@ export class EcoleDirecte {
         this.clear();
         throw new EdError('Votre session a expiré. Reconnectez-vous.', 401, code);
       }
-      throw new EdError('Pièce jointe indisponible sur ÉcoleDirecte.', 404);
+      throw new EdError('Fichier indisponible sur ÉcoleDirecte.', 404);
     }
     const limit = 20 * 1024 * 1024;
     if (Number(response.headers.get('content-length') || 0) > limit)
@@ -1020,6 +1108,102 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
   };
 }
 
+/** Rubrique de `familledocuments.awp` → catégorie Orbite et type de fichier par défaut au téléchargement. */
+const DOC_KINDS: [string, DocKind, string][] = [
+  ['notes', 'bulletin', 'Note'],
+  ['viescolaire', 'vie', 'VieScolaire'],
+  ['administratifs', 'admin', ''],
+  ['inscriptions', 'admin', ''],
+  ['entreprises', 'admin', ''],
+  ['factures', 'facture', 'Facture'],
+];
+
+/** Rubriques de `familledocuments.awp` aplaties, du plus récent au plus ancien. */
+export function normalizeDocuments(data: unknown, students: Map<string, string>): EdDocument[] {
+  if (!data || typeof data !== 'object') return [];
+  const out: EdDocument[] = [];
+  for (const [field, kind, fallback] of DOC_KINDS)
+    for (const d of records<{ id?: Id; libelle?: string; date?: string; idEleve?: Id; type?: unknown }>(
+      (data as Record<string, unknown>)[field],
+    )) {
+      const id = String(d.id ?? '');
+      if (!/^\d{1,12}$/.test(id)) continue;
+      const given = typeof d.type === 'string' && /^\w{1,40}$/.test(d.type) ? d.type : '';
+      out.push({
+        id,
+        name: String(d.libelle || 'Document')
+          .trim()
+          .slice(0, 200),
+        date: /^\d{4}-\d{2}-\d{2}/.test(String(d.date)) ? String(d.date).slice(0, 10) : '',
+        kind,
+        childId: d.idEleve != null ? (students.get(String(d.idEleve)) ?? null) : null,
+        // Administratifs : type vide ; les autres rubriques ont leur propre valeur.
+        fileType: field === 'administratifs' || field === 'entreprises' ? '' : given || fallback,
+      });
+    }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Séances d'un jour : seules celles dont le professeur a rempli le contenu ou joint un document. */
+export function normalizeLessons(date: string, matieres: unknown): Lesson[] {
+  return records<RawHomeworkSubject>(matieres)
+    .map((m, i) => ({
+      id: `${date}:${String(m.id ?? i)}`,
+      date,
+      subject: String(m.matiere || 'Matière').trim(),
+      teacher: String(m.nomProf || '')
+        .replace(/^\s*par\s+/i, '')
+        .trim(),
+      text: homeworkText(m.contenuDeSeance?.contenu),
+      documents: records<{ libelle?: string }>(m.contenuDeSeance?.documents).map((d) =>
+        String(d.libelle || 'Pièce jointe'),
+      ),
+    }))
+    .filter((l) => l.text || l.documents.length);
+}
+
+/** Texte libre ÉcoleDirecte (parfois en HTML) réduit à une ligne propre. */
+function cleanText(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  return htmlText(value).replace(/\s+/g, ' ').trim().slice(0, 600);
+}
+
+/**
+ * Conseil de classe, professeur principal et moyennes officielles par matière.
+ * Le rang n'est jamais repris : Orbite ne compare pas les élèves entre eux.
+ */
+function periodExtras(p: RawPeriod, settings: NonNullable<RawNotesData['parametrage']>): Partial<Period> {
+  const extras: Partial<Period> = {};
+  const date = String(p.dateConseil || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    extras.councilDate = date;
+    const time = String(p.heureConseil || '').trim();
+    if (/^\d{1,2}:\d{2}$/.test(time)) extras.councilTime = time.padStart(5, '0');
+  }
+  const pp = String(p.ensembleMatieres?.nomPP || '').trim();
+  if (pp) extras.mainTeacher = pp;
+  // Moyennes masquées par l'établissement, ou publiées seulement une fois la période close.
+  if (settings.affichageMoyenne === false || settings.moyenneEleve === false) return extras;
+  if (settings.moyenneUniquementPeriodeCloture === true && !p.cloture) return extras;
+  const hideClass = settings.moyenneClasse === false;
+  const subjects: SubjectAverage[] = records<RawDiscipline>(p.ensembleMatieres?.disciplines)
+    .filter((d) => !d.groupeMatiere && (d.codeMatiere || d.discipline))
+    .map((d) => ({
+      id: `${d.codeMatiere || d.discipline}:${d.codeSousMatiere || ''}`,
+      label: String(d.discipline || d.libelleMatiere || d.codeMatiere || '').trim(),
+      average: number(d.moyenne),
+      classAverage: hideClass ? null : number(d.moyenneClasse),
+      min: hideClass || settings.moyenneMin === false ? null : number(d.moyenneMin),
+      max: hideClass || settings.moyenneMax === false ? null : number(d.moyenneMax),
+      coefficient: settings.moyenneCoefMatiere === false ? null : number(d.coef),
+      teachers: records<{ nom?: string }>(d.professeurs)
+        .map((t) => String(t.nom || '').trim())
+        .filter(Boolean),
+    }));
+  if (subjects.length) extras.subjects = subjects;
+  return extras;
+}
+
 /**
  * Convertit la réponse `notes.awp` au format partagé. Les réglages `parametrage`
  * de l'établissement sont respectés : une moyenne ou une note masquée sur
@@ -1051,6 +1235,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): {
           ? null
           : number(p.ensembleMatieres?.moyenneGenerale),
       classAverage: settings.moyenneClasse === false ? null : number(p.ensembleMatieres?.moyenneClasse),
+      ...periodExtras(p, settings),
     })),
     notes:
       settings.affichageNote === false
@@ -1072,6 +1257,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): {
                 : number(n.moyenneClasse),
             // Notes non significatives ou en lettres : affichées mais hors moyenne.
             excluded: !!n.nonSignificatif || !!n.enLettre,
+            ...(cleanText(n.commentaire) ? { comment: cleanText(n.commentaire) } : {}),
             skills: skills(n.elementsProgramme),
           })),
   };

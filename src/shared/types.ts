@@ -50,6 +50,8 @@ export interface Note extends Gradable {
   raw: string;
   classAverage: number | null;
   excluded: boolean;
+  /** Appréciation du professeur sur ce devoir, quand ÉcoleDirecte la fournit. */
+  comment?: string;
   /** Compétences évaluées avec cette note (souvent vides au lycée). */
   skills?: Skill[];
 }
@@ -84,6 +86,35 @@ export interface Period {
   end?: string | undefined;
   average: number | null;
   classAverage: number | null;
+  /** Date (AAAA-MM-JJ) et heure du conseil de classe, si l'établissement la publie. */
+  councilDate?: string;
+  councilTime?: string;
+  /** Professeur principal. */
+  mainTeacher?: string;
+  /** Moyennes officielles calculées par l'établissement, matière par matière (sans rang). */
+  subjects?: SubjectAverage[];
+}
+
+export interface SubjectAverage {
+  /** Même clé que `Note.subjectId` : `codeMatière:codeSousMatière`. */
+  id: string;
+  label: string;
+  average: number | null;
+  classAverage: number | null;
+  min: number | null;
+  max: number | null;
+  coefficient: number | null;
+  teachers: string[];
+}
+
+/** Ce qui a été fait en classe un jour donné (contenu de séance du cahier de textes). */
+export interface Lesson {
+  id: string;
+  date: string;
+  subject: string;
+  teacher: string;
+  text: string;
+  documents: string[];
 }
 
 /** Les devoirs faits ne sont jamais renvoyés ; `unknown` quand ÉcoleDirecte ne précise pas l'état. */
@@ -375,4 +406,45 @@ export interface ClaudeKeyStatus {
   updatedAt: string | null;
   /** Dernière vérification auprès d'Anthropic. */
   check: 'ok' | 'refused' | 'unreachable' | null;
+}
+
+/** Ce qu'un membre veut recevoir en notification (réglé appareil par appareil côté serveur). */
+export interface PushPrefs {
+  notes: boolean;
+  mail: boolean;
+  life: boolean;
+  /** Rappel du cartable à 19 h (élèves). */
+  bag: boolean;
+  /** Récapitulatif du dimanche soir (parents). */
+  recap: boolean;
+}
+
+export interface PushStatus {
+  /** Clé publique VAPID (base64url) pour `pushManager.subscribe`. */
+  publicKey: string;
+  /** Cet appareil est abonné. */
+  subscribed: boolean;
+  /** Nombre d'appareils abonnés pour ce profil. */
+  devices: number;
+  prefs: PushPrefs;
+}
+
+export type DocKind = 'bulletin' | 'vie' | 'admin' | 'facture';
+
+/** Document publié par l'établissement (bulletins, certificats…), visible des parents seulement. */
+export interface SchoolDocument {
+  id: string;
+  name: string;
+  date: string;
+  kind: DocKind;
+  /** Élève concerné (`compte:élève`), ou `null` pour un document de la famille. */
+  childId: string | null;
+  /** Lien signé, valable quelques minutes sur cet appareil. */
+  url?: string;
+}
+
+export interface DocumentList {
+  items: SchoolDocument[];
+  /** ÉcoleDirecte n'a pas répondu ou refuse cette rubrique pour ce compte. */
+  unavailable: boolean;
 }

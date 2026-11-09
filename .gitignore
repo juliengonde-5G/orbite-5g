@@ -10,3 +10,4 @@ coverage/
 .orbite-data/
 *.enc
 .orbite-demo/
+.claude/

@@ -1465,6 +1465,51 @@ button {
     flex: 1 1 210px;
   }
 }
+.council {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+  color: var(--ink-2);
+  svg {
+    flex: none;
+    margin-top: 0.1rem;
+    color: var(--accent);
+  }
+  b {
+    color: var(--ink);
+  }
+  small {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--ink-3);
+  }
+}
+.note-comment {
+  margin: 0.3rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 3px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--ink-2);
+  font-style: italic;
+}
+.official-mark {
+  display: block;
+  font: 600 0.62rem/1 var(--text);
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+.subject-official {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0 0 0.4rem;
+  padding: 0 1rem;
+  color: var(--ink-3);
+  font-size: 0.85rem;
+}
 .official {
   color: var(--ink-2);
   b {
@@ -3102,5 +3147,282 @@ button {
   }
   .top::after {
     animation: none;
+  }
+}
+
+/* ---------- Notifications ---------- */
+.notify-main {
+  display: grid;
+  gap: 10px;
+}
+.notify-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ink-3);
+  }
+}
+.notify-main.is-on .dot {
+  background: var(--good);
+}
+.notify-prefs {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  .toggle + .toggle {
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* ---------- La semaine d'un coup d'œil ---------- */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.week-day {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-height: 72px;
+  padding: 8px 2px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 0 var(--line);
+  &.is-off {
+    background: transparent;
+    color: var(--ink-3);
+    box-shadow: none;
+  }
+  &.is-active {
+    background: var(--accent);
+    color: #fff;
+    .week-name,
+    .week-load {
+      color: inherit;
+    }
+  }
+  &:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    outline-offset: 2px;
+  }
+}
+.week-name {
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+.week-num {
+  font: 700 1.15rem/1 var(--display);
+}
+.week-load {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent);
+  .is-done & {
+    color: var(--good);
+  }
+}
+.week-exam {
+  position: absolute;
+  top: -2px;
+  right: -9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--low);
+}
+
+/* ---------- En classe ---------- */
+.class-days {
+  display: grid;
+  gap: 12px;
+}
+.class-pick {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.chip-button {
+  flex: none;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 600 0.9rem/1 var(--text);
+  cursor: pointer;
+  &.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+}
+.lesson-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lesson {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lesson-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  span:last-child:not(.subject-mark) {
+    color: var(--ink-3);
+    font-size: 0.85rem;
+  }
+}
+.lesson-text {
+  white-space: pre-line;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.lesson-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---------- Récap de la semaine ---------- */
+.recap-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  break-inside: avoid;
+  > svg:first-child {
+    color: var(--accent);
+    flex: none;
+  }
+  > svg:last-child {
+    margin-left: auto;
+    color: var(--ink-3);
+    flex: none;
+  }
+  span {
+    display: grid;
+    gap: 2px;
+  }
+  small {
+    color: var(--ink-3);
+  }
+}
+.recap-child {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--line);
+  .note-list {
+    background: transparent;
+  }
+}
+.recap-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  h2 {
+    font: 700 1.5rem/1 var(--display);
+    color: var(--accent);
+  }
+  > span:nth-child(2) {
+    color: var(--ink-3);
+  }
+  .fact {
+    margin-left: auto;
+  }
+}
+.recap-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  > div {
+    padding: 10px;
+    border-radius: 14px;
+    background: var(--surface-2);
+  }
+  dt {
+    font-size: 0.75rem;
+    color: var(--ink-3);
+  }
+  dd {
+    margin: 2px 0 0;
+    font: 700 1.4rem/1 var(--display);
+  }
+  small {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: var(--ink-2);
+  }
+}
+@media (max-width: 380px) {
+  .recap-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.recap-exams {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    svg {
+      color: var(--low);
+    }
+    span {
+      margin-left: auto;
+      color: var(--ink-3);
+      font-size: 0.88rem;
+    }
+  }
+}
+
+/* ---------- Documents ---------- */
+.doc-main {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  small {
+    color: var(--ink-3);
+    font-weight: 400;
   }
 }

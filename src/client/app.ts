@@ -12,9 +12,13 @@ import { renderLock } from './lock.ts';
 import { resetData, state, type Route } from './state.ts';
 import { bagKey, bagView, kitSheet } from './bag-view.ts';
 import { meView, sheet } from './settings.ts';
+import { resetNotifications } from './push-view.ts';
 import { parisHour } from '../shared/metrics.ts';
 import { childColor, familyHome, gradesView, studentHome, tasksView, type Actions } from './views.ts';
 import { lifeView } from './life-view.ts';
+import { lessonKey } from './class-view.ts';
+import { recapView } from './recap-view.ts';
+import { docsView } from './docs-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -29,6 +33,8 @@ const HASH: Record<Route, string> = {
   messages: 'messages',
   message: 'message',
   life: 'vie-scolaire',
+  recap: 'recap',
+  docs: 'documents',
   me: 'moi',
 };
 
@@ -387,6 +393,27 @@ const actions: Actions = {
       });
   },
 
+  loadLessons(childId, date, refresh = false) {
+    const key = lessonKey(childId, date);
+    const current = state.lessons.get(key);
+    if (current?.loading) return;
+    const entry = { value: current?.value ?? null, loading: true, error: null as string | null };
+    state.lessons.set(key, entry);
+    if (refresh) queueMicrotask(render);
+    api
+      .lessons(childId, date)
+      .then((r) => {
+        entry.value = r.lessons;
+      })
+      .catch((e) => {
+        entry.error = e instanceof ApiError ? e.message : 'Cahier de textes indisponible.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+
   rerender: () => render(),
 };
 
@@ -511,6 +538,8 @@ function currentView(): HTMLElement {
   }
   if (state.route === 'home' && me.role === 'parent') return familyHome(actions);
   if (state.route === 'messages') return messagesView(actions);
+  if (state.route === 'recap' && me.role === 'parent') return recapView(actions);
+  if (state.route === 'docs' && me.role === 'parent') return docsView(actions);
   if (state.route === 'message' && state.mailOpen) return messageView(state.mailOpen, actions);
   const child = children.find((c) => c.id === state.selected) ?? children[0];
   if (!child) return familyHome(actions);
@@ -560,6 +589,8 @@ function render(): void {
     const own =
       state.route === 'me' ||
       state.route === 'home' ||
+      state.route === 'recap' ||
+      state.route === 'docs' ||
       state.route === 'messages' ||
       state.route === 'message' ||
       state.session.me.role !== 'parent' ||
@@ -586,6 +617,7 @@ async function logout(): Promise<void> {
 function unlocked(session: SessionInfo): void {
   state.session = session;
   resetData();
+  resetNotifications();
   applyPrefs();
   clear(root);
   state.route = routeFromHash();

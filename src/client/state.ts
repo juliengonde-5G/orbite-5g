@@ -4,9 +4,12 @@
  */
 import type {
   BagDay,
+  DocKind,
+  DocumentList,
   FamilyDashboard,
   Homework,
   HomeworkDate,
+  Lesson,
   MailDetail,
   MailList,
   MemberView,
@@ -14,7 +17,19 @@ import type {
   SessionInfo,
 } from '../shared/types.ts';
 
-export type Route = 'home' | 'child' | 'bag' | 'tasks' | 'grades' | 'progress' | 'messages' | 'message' | 'life' | 'me';
+export type Route =
+  | 'home'
+  | 'child'
+  | 'bag'
+  | 'tasks'
+  | 'grades'
+  | 'progress'
+  | 'messages'
+  | 'message'
+  | 'life'
+  | 'recap'
+  | 'docs'
+  | 'me';
 
 export interface HomeworkState {
   items: Homework[];
@@ -73,6 +88,17 @@ export const state = {
   /** Messages non lus de la boîte principale, pour la pastille de l'onglet. */
   unread: 0,
   lives: new Map<string, Loadable<SchoolLife>>(),
+  /** Documents de l'établissement (parents). */
+  docs: { value: null, loading: false, error: null } as Loadable<DocumentList>,
+  docsKind: 'all' as 'all' | DocKind,
+  /** Contenu des séances, par `élève|date`. */
+  lessons: new Map<string, Loadable<Lesson[]>>(),
+  /** Onglet Devoirs : à faire ou « en classe ». */
+  tasksMode: 'todo' as 'todo' | 'class',
+  /** Jour filtré par la semaine d'un coup d'œil ; `null` = tous. */
+  taskDay: null as string | null,
+  /** Jour choisi dans « En classe » ; `null` = le plus récent. */
+  lessonDay: null as string | null,
   /** Élève affiché dans les onglets Devoirs, Notes et Progrès (parents). */
   selected: null as string | null,
   route: 'home' as Route,
@@ -94,6 +120,12 @@ export function resetData(): void {
   state.mail.clear();
   state.mailDetail.clear();
   state.lives.clear();
+  state.lessons.clear();
+  state.docs = { value: null, loading: false, error: null };
+  state.docsKind = 'all';
+  state.tasksMode = 'todo';
+  state.taskDay = null;
+  state.lessonDay = null;
   state.mailScope = 'family';
   state.mailOpen = null;
   state.unread = 0;

@@ -29,7 +29,7 @@ import {
   toTwenty,
   valid,
 } from '../src/shared/metrics.ts';
-import { normalizeNotes, number } from '../src/server/ecoledirecte.ts';
+import { normalizeNotes, number, type RawNotesData } from '../src/server/ecoledirecte.ts';
 import type { Gradable } from '../src/shared/types.ts';
 
 const n = (value: number | null, outOf = 20, coefficient = 1, date = '2026-11-01'): Gradable => ({
@@ -298,4 +298,69 @@ test('compétences : identifiants ÉcoleDirecte, valeur brute non reconnue, éch
     ],
   );
   assert.equal(normalizeNotes({ notes: [] }).skillScale, undefined);
+});
+
+test('moyennes officielles par matière, conseil de classe et appréciations, sans rang', () => {
+  const raw: RawNotesData = {
+    parametrage: {},
+    periodes: [
+      {
+        codePeriode: 'A001',
+        periode: 'Trimestre 1',
+        dateConseil: '2026-12-10',
+        heureConseil: '8:15',
+        ensembleMatieres: {
+          nomPP: 'Mme Ferrand',
+          disciplines: [
+            { codeMatiere: 'SCI', discipline: 'SCIENCES', groupeMatiere: true, moyenne: '13' },
+            {
+              codeMatiere: 'MATH',
+              discipline: 'MATHÉMATIQUES',
+              moyenne: '14,5',
+              moyenneClasse: '12,1',
+              moyenneMin: '5',
+              moyenneMax: '19',
+              coef: '3',
+              professeurs: [{ nom: 'M. DURAND' }],
+              rang: 2,
+              effectif: 28,
+            } as never,
+            { codeMatiere: 'FRANC', codeSousMatiere: 'ORAL', discipline: 'Oral', sousMatiere: true, moyenne: '' },
+          ],
+        },
+      },
+      { codePeriode: 'A002', periode: 'Trimestre 2', dateConseil: 'bientôt', ensembleMatieres: {} },
+    ],
+    notes: [{ valeur: '15', noteSur: '20', coef: '1', codeMatiere: 'MATH', commentaire: '<p>Bon  travail</p>' }],
+  };
+  const { periods, notes } = normalizeNotes(raw);
+  const t1 = periods[0];
+  assert.equal(t1?.councilDate, '2026-12-10');
+  assert.equal(t1?.councilTime, '08:15');
+  assert.equal(t1?.mainTeacher, 'Mme Ferrand');
+  assert.deepEqual(
+    t1?.subjects?.map((s) => s.id),
+    ['MATH:', 'FRANC:ORAL'],
+  );
+  const math = t1?.subjects?.[0];
+  assert.equal(math?.average, 14.5);
+  assert.equal(math?.classAverage, 12.1);
+  assert.deepEqual(math?.teachers, ['M. DURAND']);
+  assert.equal(JSON.stringify(t1).includes('rang'), false);
+  assert.equal(t1?.subjects?.[1]?.average, null);
+  assert.equal(periods[1]?.councilDate, undefined);
+  assert.equal(notes[0]?.comment, 'Bon travail');
+
+  const hidden = normalizeNotes({ ...raw, parametrage: { moyenneClasse: false } }).periods[0]?.subjects?.[0];
+  assert.equal(hidden?.classAverage, null);
+  assert.equal(hidden?.min, null);
+  assert.equal(normalizeNotes({ ...raw, parametrage: { affichageMoyenne: false } }).periods[0]?.subjects, undefined);
+  assert.equal(normalizeNotes({ ...raw, parametrage: { moyenneEleve: false } }).periods[0]?.subjects, undefined);
+  const closedOnly = normalizeNotes({ ...raw, parametrage: { moyenneUniquementPeriodeCloture: true } }).periods[0];
+  assert.equal(closedOnly?.subjects, undefined, 'période en cours : moyennes pas encore publiées');
+  assert.equal(closedOnly?.councilDate, '2026-12-10', 'le conseil reste affiché');
+  const noRange = normalizeNotes({ ...raw, parametrage: { moyenneMin: false, moyenneCoefMatiere: false } }).periods[0];
+  assert.equal(noRange?.subjects?.[0]?.min, null);
+  assert.equal(noRange?.subjects?.[0]?.max, 19);
+  assert.equal(noRange?.subjects?.[0]?.coefficient, null);
 });

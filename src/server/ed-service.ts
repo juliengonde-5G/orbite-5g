@@ -26,6 +26,7 @@
 import {
   EcoleDirecte,
   EdError,
+  type EdDocument,
   type EdFile,
   type EdMail,
   type EdMailDetail,
@@ -42,6 +43,7 @@ import type {
   Dashboard,
   EdStatus,
   HomeworkPage,
+  Lesson,
   SchoolInfo,
   SchoolLife,
 } from '../shared/types.ts';
@@ -55,10 +57,13 @@ export interface EdClient {
   dashboard(): Promise<Dashboard>;
   homeworkForChild(childId: string, options: { cursor: number | null }): Promise<HomeworkPage>;
   timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
+  lessonsForChild(childId: string, date: string): Promise<Lesson[]>;
+  documents(): Promise<EdDocument[]>;
+  documentFile(id: string, fileType: string): Promise<EdFile>;
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   mailbox(childId: string | null): Promise<EdMail[]>;
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
-  mailFile(fileId: string): Promise<EdFile>;
+  mailFile(childId: string | null, fileId: string): Promise<EdFile>;
   schoolLifeForChild(childId: string): Promise<SchoolLife>;
   exportSession(): SavedAuth | null;
   restoreSession(saved: unknown): void;
@@ -115,6 +120,8 @@ export class EdService {
   private queue: Promise<unknown> = Promise.resolve();
   private homeworkCache = new Map<string, { time: number; value: HomeworkPage }>();
   private timetableCache = new Map<string, { time: number; value: Course[] }>();
+  private lessonCache = new Map<string, { time: number; value: Lesson[] }>();
+  private docCache: { time: number; value: EdDocument[] } | null = null;
   private infoCache = new Map<string, { time: number; value: SchoolInfo[] }>();
   private mailCache = new Map<string, { time: number; value: EdMail[] }>();
   private mailDetails = new Map<string, { time: number; value: EdMailDetail }>();
@@ -238,6 +245,8 @@ export class EdService {
   private clearCaches(): void {
     this.homeworkCache.clear();
     this.timetableCache.clear();
+    this.lessonCache.clear();
+    this.docCache = null;
     this.infoCache.clear();
     this.mailCache.clear();
     this.mailDetails.clear();
@@ -380,6 +389,34 @@ export class EdService {
     });
   }
 
+  /** Documents du compte famille (cache 30 min). */
+  documents(maxAge = 30 * 60000): Promise<EdDocument[]> {
+    return this.serial(async () => {
+      if (this.docCache && Date.now() - this.docCache.time < Math.max(maxAge, this.floor)) return this.docCache.value;
+      const value = await this.call((c) => c.documents());
+      this.docCache = { time: Date.now(), value };
+      return value;
+    });
+  }
+
+  documentFile(id: string, fileType: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.documentFile(id, fileType)));
+  }
+
+  /** Contenu des séances d'un jour passé (cache 30 min). */
+  lessons(childId: string, date: string, maxAge = 30 * 60000): Promise<Lesson[]> {
+    return this.serial(async () => {
+      const key = childId + ':' + date;
+      const cached = this.lessonCache.get(key);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      if (!this.cache.dashboard?.children.some((c) => c.id === childId)) throw new EdError('Élève introuvable.', 404);
+      const value = await this.call((c) => c.lessonsForChild(childId, date));
+      this.lessonCache.set(key, { time: Date.now(), value });
+      if (this.lessonCache.size > 80) this.lessonCache.delete(this.lessonCache.keys().next().value as string);
+      return value;
+    });
+  }
+
   /** Informations du collège (post-its), cache 1 h ; une erreur donne une liste vide. */
   schoolInfos(childId: string): Promise<SchoolInfo[]> {
     return this.serial(async () => {
@@ -430,8 +467,8 @@ export class EdService {
   }
 
   /** Pièce jointe, jamais gardée par Orbite. */
-  mailFile(fileId: string): Promise<EdFile> {
-    return this.serial(() => this.call((c) => c.mailFile(fileId)));
+  mailFile(childId: string | null, fileId: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.mailFile(childId, fileId)));
   }
 
   /** Vie scolaire d'un élève, cache 15 min. */

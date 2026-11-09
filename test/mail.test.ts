@@ -8,6 +8,8 @@ import {
   EcoleDirecte,
   dispositionName,
   htmlText,
+  normalizeDocuments,
+  normalizeLessons,
   normalizeMail,
   normalizeSchoolLife,
   schoolYear,
@@ -134,4 +136,93 @@ test('vie scolaire : types, justification, réglages de l’établissement respe
   assert.equal(punition?.when, 'S’est déroulé le mer. 08 décembre de 13:00 à 14:00');
   assert.equal(life.events[2]?.comment, '', 'commentaire d’absence masqué');
   assert.deepEqual(normalizeSchoolLife(null), { events: [] });
+});
+
+test('documents : rubriques aplaties, élève rattaché, identifiants invalides écartés', () => {
+  const students = new Map([['11', '1:11']]);
+  const docs = normalizeDocuments(
+    {
+      notes: [{ id: 5, libelle: 'Bulletin T1', date: '2026-01-20', idEleve: 11, type: 'Note' }],
+      administratifs: [
+        { id: '6', libelle: 'Certificat', date: '2025-09-02 10:00', idEleve: 99 },
+        { id: '../x', libelle: 'Piège' },
+        null,
+      ],
+      factures: [{ id: 7, libelle: '', date: 'n/a', type: '../../x' }],
+      inconnu: [{ id: 8 }],
+    },
+    students,
+  );
+  assert.deepEqual(
+    docs.map((d) => [d.id, d.kind, d.childId, d.date, d.fileType]),
+    [
+      ['5', 'bulletin', '1:11', '2026-01-20', 'Note'],
+      ['6', 'admin', null, '2025-09-02', ''],
+      ['7', 'facture', null, '', 'Facture'],
+    ],
+  );
+  assert.equal(docs[2]?.name, 'Document');
+  assert.deepEqual(normalizeDocuments(null, students), []);
+});
+
+test('contenu de séance : texte décodé, documents, séances vides écartées', () => {
+  const lessons = normalizeLessons('2026-11-05', [
+    {
+      id: 1,
+      matiere: 'MATHÉMATIQUES',
+      nomProf: ' par M. DURAND',
+      contenuDeSeance: { contenu: b64('<p>Chapitre <b>4</b></p>') },
+    },
+    { id: 2, matiere: 'SVT', contenuDeSeance: { contenu: '', documents: [{ libelle: 'TP.pdf' }] } },
+    { id: 3, matiere: 'EPS', aFaire: { contenu: b64('Courir') } },
+    'x',
+  ]);
+  assert.deepEqual(
+    lessons.map((l) => [l.id, l.subject, l.teacher, l.text, l.documents]),
+    [
+      ['2026-11-05:1', 'MATHÉMATIQUES', 'M. DURAND', 'Chapitre 4', []],
+      ['2026-11-05:2', 'SVT', '', '', ['TP.pdf']],
+    ],
+  );
+});
+
+test('téléchargements : le bon établissement est réactivé même si la liste vient du cache', async () => {
+  const calls: string[] = [];
+  const ed = new EcoleDirecte(async (url, init) => {
+    const path = String(url);
+    calls.push(path);
+    if (path.includes('renewtoken'))
+      return new Response(JSON.stringify({ code: 200, token: 't' + calls.length, data: {} }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    assert.ok(init);
+    return new Response('%PDF-1.4', { headers: { 'content-type': 'application/pdf' } });
+  });
+  ed.restoreSession({
+    version: 1,
+    token: 't',
+    cookies: [],
+    accounts: [
+      {
+        id: 42,
+        idLogin: 4200,
+        typeCompte: '1',
+        main: true,
+        profile: { eleves: [{ id: 7, classe: { libelle: '5e B' } }] },
+      },
+      { id: 43, idLogin: 4300, typeCompte: '1', profile: { eleves: [{ id: 8, classe: { libelle: '6e A' } }] } },
+    ],
+    activeId: 43,
+  });
+  // Un autre établissement est actif : la famille (compte 42) doit être réactivée avant le document.
+  await ed.documentFile('12', 'Note');
+  assert.match(calls[0] ?? '', /renewtoken/);
+  assert.match(calls[1] ?? '', /fichierId=12&leTypeDeFichier=Note/);
+  // Pièce jointe d'un message de l'élève 42:7 alors que le compte 43 est redevenu actif.
+  calls.length = 0;
+  ed.activeId = 43;
+  await ed.mailFile('42:7', '99');
+  assert.match(calls[0] ?? '', /renewtoken/);
+  assert.match(calls[1] ?? '', /fichierId=99&leTypeDeFichier=PIECE_JOINTE/);
+  await assert.rejects(ed.documentFile('12', '../x'), /introuvable/);
 });

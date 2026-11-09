@@ -31,19 +31,22 @@ import { EdService, type EdClient } from './ed-service.ts';
 import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd } from './demo.ts';
+import { Notifier } from './notifier.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
   BagDay,
   ClaudeKeyStatus,
   Dashboard,
+  DocumentList,
   FamilyDashboard,
   Kit,
   MailDetail,
   MailItem,
   MailList,
   SessionInfo,
+  SchoolDocument,
 } from '../shared/types.ts';
-import type { EdMail } from './ecoledirecte.ts';
+import type { EdFile, EdMail } from './ecoledirecte.ts';
 import { bagDate, bagItems, emptyKit } from '../shared/bag.ts';
 
 const projectRoot = new URL('../../', import.meta.url);
@@ -158,6 +161,8 @@ export interface AppOptions {
   background?: boolean;
   /** Âge minimal du cache ÉcoleDirecte en ms (60 s par défaut ; réduit dans les tests). */
   refreshFloor?: number;
+  /** Notificateur imposé (tests). */
+  notifier?: Notifier;
 }
 
 interface SeenDoc {
@@ -297,6 +302,19 @@ export function createApp(options: AppOptions): http.Server {
       `Code d’installation (parent administrateur) : ${secretDoc.setupCode.slice(0, 4)}-${secretDoc.setupCode.slice(4)}`,
     );
   const background = options.background ? ed.startBackground() : undefined;
+  const pushSubject = (() => {
+    const contact = (process.env.ORBITE_PUSH_CONTACT || '').trim();
+    if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) return contact;
+    try {
+      const url = options.publicUrl ? new URL(options.publicUrl) : null;
+      if (url?.protocol === 'https:') return url.origin;
+    } catch {
+      // adresse publique invalide : contact par défaut
+    }
+    return 'mailto:orbite@example.com';
+  })();
+  const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject });
+  const pushTimer = options.background ? notifier.start() : undefined;
   const loginAttempts: number[] = [];
 
   // Appareil déjà utilisé par la famille : cookie signé, sans valeur secrète, qui
@@ -423,14 +441,20 @@ export function createApp(options: AppOptions): http.Server {
   };
 
   /** Lien de téléchargement signé (15 min) : il fonctionne même ouvert hors de l'appli installée, sans cookie. */
-  const fileLink = (me: MemberRecord, token: string | undefined, key: string, file: string): string => {
+  const fileLink = (
+    me: MemberRecord,
+    token: string | undefined,
+    key: string,
+    file: string,
+    route = '/api/message/file',
+  ): string => {
     const payload = Buffer.from(
       JSON.stringify({ k: key, f: file, m: me.id, d: family.deviceTag(token), e: Date.now() + 15 * 60000 }),
     ).toString('base64url');
     const sig = createHmac('sha256', secretDoc.secret)
       .update('file:' + payload)
       .digest('base64url');
-    return `/api/message/file?t=${payload}.${sig}`;
+    return `${route}?t=${payload}.${sig}`;
   };
 
   const readFileLink = (token: string | null): { k: string; f: string; m: string; d: string } => {
@@ -565,6 +589,8 @@ export function createApp(options: AppOptions): http.Server {
     [
       'POST /api/logout',
       async (ctx) => {
+        // L'appareil verrouillé ne reçoit plus les notifications de ce profil.
+        if (ctx.me) notifier.unsubscribe(ctx.me, family.deviceTag(ctx.token));
         family.logout(ctx.token);
         setCookies(ctx, null);
         ctx.me = undefined;
@@ -794,10 +820,50 @@ export function createApp(options: AppOptions): http.Server {
         await listedMail(ref);
         const known = new Set(dashboard.children.map((c) => c.id));
         const ids = [...new Set(input as string[])].filter((id) => known.has(id));
+        const before = new Set(mail.shares[ref.key] ?? []);
         if (ids.length) mail.shares[ref.key] = ids;
         else delete mail.shares[ref.key];
         vault.save('mail', mail);
+        const added = ids.filter((id) => !before.has(id));
+        if (added.length) {
+          const found = await listedMail(ref).catch(() => null);
+          void notifier.shared(added, found?.subject || 'Nouveau message').catch(() => undefined);
+        }
         return { sharedWith: ids };
+      },
+    ],
+    [
+      'POST /api/documents',
+      async (ctx) => {
+        const me = requireParent(ctx);
+        try {
+          const docs = await ed.documents(ctx.data.refresh === true ? 0 : undefined);
+          // Le type de fichier ÉcoleDirecte reste côté serveur.
+          const items: SchoolDocument[] = docs.map(({ id, name, date, kind, childId }) => ({
+            id,
+            name,
+            date,
+            kind,
+            childId,
+            url: fileLink(me, ctx.token, 'doc', id, '/api/document/file'),
+          }));
+          return { items, unavailable: false } satisfies DocumentList;
+        } catch (e) {
+          if (e instanceof EdError && e.status === 401) throw e;
+          return { items: [], unavailable: true } satisfies DocumentList;
+        }
+      },
+    ],
+    [
+      'POST /api/lessons',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const date = ctx.data.date;
+        if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError('Date invalide.', 400);
+        const ago = (Date.parse(parisDate(new Date()) + 'T12:00:00Z') - Date.parse(date + 'T12:00:00Z')) / 86400000;
+        if (!(ago >= 0 && ago <= 31)) throw new HttpError('Date hors de la période proposée.', 400);
+        return { date, lessons: await ed.lessons(childId, date) };
       },
     ],
     [
@@ -822,6 +888,47 @@ export function createApp(options: AppOptions): http.Server {
         } catch (e) {
           throw new HttpError((e as Error).message || 'Conseil indisponible.', 503);
         }
+      },
+    ],
+    ['GET /api/push', async (ctx) => notifier.status(requireMember(ctx), family.deviceTag(ctx.token))],
+    [
+      'POST /api/push/subscribe',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const tag = family.deviceTag(ctx.token);
+        if (!notifier.subscribe(me, tag, ctx.data.subscription))
+          throw new HttpError('Abonnement refusé : ce navigateur n’est pas reconnu.', 400);
+        return notifier.status(me, tag);
+      },
+    ],
+    [
+      'POST /api/push/unsubscribe',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const tag = family.deviceTag(ctx.token);
+        notifier.unsubscribe(me, tag);
+        return notifier.status(me, tag);
+      },
+    ],
+    [
+      'POST /api/push/prefs',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        notifier.setPrefs(me, ctx.data.prefs);
+        return notifier.status(me, family.deviceTag(ctx.token));
+      },
+    ],
+    [
+      'POST /api/push/test',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const sent = await notifier.notify(
+          [me],
+          { title: 'Orbite', body: 'Les notifications fonctionnent sur cet appareil.', url: '/#moi', tag: 'test' },
+          null,
+        );
+        if (!sent) throw new HttpError('Aucun appareil n’a reçu la notification. Réactive-les sur cet appareil.', 503);
+        return { sent };
       },
     ],
     [
@@ -910,6 +1017,7 @@ export function createApp(options: AppOptions): http.Server {
         const me = requireAdmin(ctx);
         if (ctx.data.memberId === me.id) throw new HttpError('Tu ne peux pas supprimer ton propre profil.', 400);
         family.remove(ctx.data.memberId);
+        if (typeof ctx.data.memberId === 'string') notifier.forget(ctx.data.memberId);
         return { ok: true };
       },
     ],
@@ -1001,15 +1109,27 @@ export function createApp(options: AppOptions): http.Server {
       };
 
       if (req.method === 'GET' && path === '/api/session') return json(200, sessionInfo(ctx));
-      if (req.method === 'GET' && path === '/api/message/file') {
+      if (req.method === 'GET' && (path === '/api/message/file' || path === '/api/document/file')) {
         const link = readFileLink(new URL(req.url ?? '/', 'http://orbite.invalid').searchParams.get('t'));
         const member = family.members.find((m) => m.id === link.m);
         if (!member) throw new HttpError('Lien de pièce jointe invalide.', 403);
-        const ref = parseMailKey(link.k);
-        await mailAllowed(member, ref);
-        const listed = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
-        if (!listed) throw new HttpError('Pièce jointe introuvable.', 404);
-        const file = await ed.mailFile(link.f);
+        let file: EdFile;
+        let listed: { name: string };
+        if (path === '/api/document/file') {
+          // Documents : parents seulement, et uniquement un document de la liste ÉcoleDirecte.
+          if (link.k !== 'doc' || member.role !== 'parent') throw new HttpError('Lien de document invalide.', 403);
+          const doc = (await ed.documents()).find((d) => d.id === link.f);
+          if (!doc) throw new HttpError('Document introuvable.', 404);
+          listed = { name: doc.name.endsWith('.pdf') ? doc.name : doc.name + '.pdf' };
+          file = await ed.documentFile(doc.id, doc.fileType);
+        } else {
+          const ref = parseMailKey(link.k);
+          await mailAllowed(member, ref);
+          const att = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
+          if (!att) throw new HttpError('Pièce jointe introuvable.', 404);
+          listed = att;
+          file = await ed.mailFile(ref.childId, link.f);
+        }
         const type = SAFE_TYPES.test(file.type) ? file.type : 'application/octet-stream';
         const name = (file.name !== 'piece-jointe' ? file.name : listed.name).replace(/[\p{Cc}"\\]/gu, '');
         const ascii = name.normalize('NFD').replace(/[^\x20-\x7e]/g, '') || 'piece-jointe';
@@ -1062,6 +1182,7 @@ export function createApp(options: AppOptions): http.Server {
 
   server.on('close', () => {
     if (background) clearInterval(background);
+    if (pushTimer) clearInterval(pushTimer);
   });
   return server;
 }
