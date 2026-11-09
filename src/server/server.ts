@@ -901,7 +901,10 @@ export function createApp(options: AppOptions): http.Server {
         } catch {}
         if (originHost !== host.toLowerCase()) throw new HttpError('Origine refusée.', 403);
       }
-      if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError('Origine refusée.', 403);
+      // Requête d'un autre site : refusée pour l'API, mais une simple ouverture de
+      // page (lien reçu par message, favori) doit afficher l'appli.
+      if (req.headers['sec-fetch-site'] === 'cross-site' && path.startsWith('/api/'))
+        throw new HttpError('Origine refusée.', 403);
 
       if (!path.startsWith('/api/')) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError('Méthode refusée.', 405);

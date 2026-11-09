@@ -413,6 +413,14 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
     assert.equal(JSON.parse(proxied.body).onLan, false);
     s = await parentPhone.post('/api/data', {}, { origin: 'https://evil.example' });
     assert.equal(s.status, 403);
+    // Lien ouvert depuis un autre site : la page s'affiche, l'API reste fermée.
+    const port = (app.server.address() as AddressInfo).port;
+    const page = await fetch(`http://127.0.0.1:${port}/`, {
+      headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' },
+    });
+    assert.equal(page.status, 200);
+    s = await parentPhone.get('/api/session', { 'sec-fetch-site': 'cross-site' });
+    assert.equal(s.status, 403);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });
