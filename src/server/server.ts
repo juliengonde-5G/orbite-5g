@@ -1128,7 +1128,7 @@ export function createApp(options: AppOptions): http.Server {
           const att = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
           if (!att) throw new HttpError('Pièce jointe introuvable.', 404);
           listed = att;
-          file = await ed.mailFile(link.f);
+          file = await ed.mailFile(ref.childId, link.f);
         }
         const type = SAFE_TYPES.test(file.type) ? file.type : 'application/octet-stream';
         const name = (file.name !== 'piece-jointe' ? file.name : listed.name).replace(/[\p{Cc}"\\]/gu, '');

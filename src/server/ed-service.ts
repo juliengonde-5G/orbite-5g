@@ -63,7 +63,7 @@ export interface EdClient {
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   mailbox(childId: string | null): Promise<EdMail[]>;
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
-  mailFile(fileId: string): Promise<EdFile>;
+  mailFile(childId: string | null, fileId: string): Promise<EdFile>;
   schoolLifeForChild(childId: string): Promise<SchoolLife>;
   exportSession(): SavedAuth | null;
   restoreSession(saved: unknown): void;
@@ -467,8 +467,8 @@ export class EdService {
   }
 
   /** Pièce jointe, jamais gardée par Orbite. */
-  mailFile(fileId: string): Promise<EdFile> {
-    return this.serial(() => this.call((c) => c.mailFile(fileId)));
+  mailFile(childId: string | null, fileId: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.mailFile(childId, fileId)));
   }
 
   /** Vie scolaire d'un élève, cache 15 min. */

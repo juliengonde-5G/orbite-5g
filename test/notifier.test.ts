@@ -54,6 +54,9 @@ function setup(now: { value: Date }) {
     mail: { famille: [] as EdMail[], '1:21': [] as EdMail[], '1:22': [] as EdMail[] } as Record<string, EdMail[]>,
     life: { '1:21': { events: [] }, '1:22': { events: [] } } as Record<string, SchoolLife>,
     courses: [] as Course[],
+    /** Pannes simulées : emploi du temps ÉcoleDirecte, service push. */
+    timetableDown: false,
+    pushDown: false,
   };
   const ed: NotifierEd = {
     dashboard: async () => ({
@@ -68,7 +71,10 @@ function setup(now: { value: Date }) {
     }),
     mailbox: async (id) => data.mail[id ?? 'famille'] ?? [],
     schoolLife: async (id) => data.life[id] ?? { events: [] },
-    timetable: async () => data.courses,
+    timetable: async () => {
+      if (data.timetableDown) throw new Error('ÉcoleDirecte indisponible');
+      return data.courses;
+    },
     status: () => ({ link: 'connected' }),
   };
   const sent: { endpoint: string; message: PushMessage }[] = [];
@@ -81,6 +87,7 @@ function setup(now: { value: Date }) {
     now: () => now.value,
     send: async (sub, message) => {
       if (gone.has(sub.endpoint)) return 'gone';
+      if (data.pushDown) return 'failed';
       sent.push({ endpoint: sub.endpoint, message: message as PushMessage });
       return 'sent';
     },
@@ -212,6 +219,35 @@ test('notifications : heures calmes, cartable à 19 h la veille d’un jour de c
     assert.equal(recap.length, 1);
     assert.equal(recap[0]?.body, 'Léo : 2 notes · Nina : aucune note');
     assert.equal(to(t.sent, 2).filter((m) => m.url === '/#recap').length, 0);
+  } finally {
+    rmSync(t.dir, { recursive: true, force: true });
+  }
+});
+
+test('notifications : rappel et récap retentés après une panne, envoyés une seule fois', async () => {
+  const now = { value: new Date('2026-11-04T18:05:00Z') };
+  const t = setup(now);
+  try {
+    t.data.courses = [{ subject: 'MATHS', start: '08:30', cancelled: false, kind: 'cours' } as Course];
+    const bag = () => to(t.sent, 2).filter((m) => m.url === '/#cartable').length;
+    t.data.timetableDown = true;
+    await t.notifier.bagReminder(now.value);
+    t.data.timetableDown = false;
+    t.data.pushDown = true;
+    await t.notifier.bagReminder(now.value);
+    assert.equal(bag(), 0, 'deux échecs : rien d’envoyé');
+    t.data.pushDown = false;
+    await t.notifier.bagReminder(now.value);
+    await t.notifier.bagReminder(now.value);
+    assert.equal(bag(), 1, 'envoyé au passage suivant, une seule fois');
+
+    const sunday = new Date('2026-11-08T17:30:00Z');
+    t.data.pushDown = true;
+    await t.notifier.recap(sunday);
+    t.data.pushDown = false;
+    await t.notifier.recap(sunday);
+    await t.notifier.recap(sunday);
+    assert.equal(to(t.sent, 1).filter((m) => m.url === '/#recap').length, 1);
   } finally {
     rmSync(t.dir, { recursive: true, force: true });
   }

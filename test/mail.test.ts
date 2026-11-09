@@ -185,3 +185,44 @@ test('contenu de séance : texte décodé, documents, séances vides écartées'
     ],
   );
 });
+
+test('téléchargements : le bon établissement est réactivé même si la liste vient du cache', async () => {
+  const calls: string[] = [];
+  const ed = new EcoleDirecte(async (url, init) => {
+    const path = String(url);
+    calls.push(path);
+    if (path.includes('renewtoken'))
+      return new Response(JSON.stringify({ code: 200, token: 't' + calls.length, data: {} }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    assert.ok(init);
+    return new Response('%PDF-1.4', { headers: { 'content-type': 'application/pdf' } });
+  });
+  ed.restoreSession({
+    version: 1,
+    token: 't',
+    cookies: [],
+    accounts: [
+      {
+        id: 42,
+        idLogin: 4200,
+        typeCompte: '1',
+        main: true,
+        profile: { eleves: [{ id: 7, classe: { libelle: '5e B' } }] },
+      },
+      { id: 43, idLogin: 4300, typeCompte: '1', profile: { eleves: [{ id: 8, classe: { libelle: '6e A' } }] } },
+    ],
+    activeId: 43,
+  });
+  // Un autre établissement est actif : la famille (compte 42) doit être réactivée avant le document.
+  await ed.documentFile('12', 'Note');
+  assert.match(calls[0] ?? '', /renewtoken/);
+  assert.match(calls[1] ?? '', /fichierId=12&leTypeDeFichier=Note/);
+  // Pièce jointe d'un message de l'élève 42:7 alors que le compte 43 est redevenu actif.
+  calls.length = 0;
+  ed.activeId = 43;
+  await ed.mailFile('42:7', '99');
+  assert.match(calls[0] ?? '', /renewtoken/);
+  assert.match(calls[1] ?? '', /fichierId=99&leTypeDeFichier=PIECE_JOINTE/);
+  await assert.rejects(ed.documentFile('12', '../x'), /introuvable/);
+});

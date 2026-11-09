@@ -311,13 +311,15 @@ export class Notifier {
     await Promise.all(out);
   }
 
-  private once(key: string): boolean {
-    if (this.doc.sent[key]) return false;
+  /**
+   * Envoi unique (`bag:…`, `recap:…`) : on ne le note qu'une fois réussi, pour que les
+   * passages suivants de l'heure réessaient après une panne d'ÉcoleDirecte ou du service push.
+   */
+  private markSent(key: string): void {
     this.doc.sent[key] = Date.now();
     const cut = Date.now() - 30 * DAY;
     for (const [k, t] of Object.entries(this.doc.sent)) if (t < cut) delete this.doc.sent[k];
     this.save();
-    return true;
   }
 
   /** 19 h : « prépare ton sac » pour chaque élève qui a cours le lendemain. */
@@ -327,12 +329,17 @@ export class Notifier {
     if ([0, 6].includes(weekday(tomorrow))) return;
     for (const kid of this.options.family.members.filter((m) => m.role === 'child' && m.studentId)) {
       if (!this.prefs(kid.id).bag || !this.doc.subs.some((s) => s.memberId === kid.id)) continue;
-      if (!this.once(`bag:${kid.id}:${today}`)) continue;
+      const key = `bag:${kid.id}:${today}`;
+      if (this.doc.sent[key]) continue;
       const courses = await this.options.ed.timetable(kid.studentId as string, tomorrow).catch(() => null);
-      const real = (courses ?? []).filter((c) => !c.cancelled && c.kind !== 'permanence' && c.subject);
-      if (!courses || !real.length) continue;
+      if (!courses) continue; // ÉcoleDirecte indisponible : nouvel essai au prochain passage.
+      const real = courses.filter((c) => !c.cancelled && c.kind !== 'permanence' && c.subject);
+      if (!real.length) {
+        this.markSent(key); // pas cours demain : rien à envoyer ce soir
+        continue;
+      }
       const first = real.sort((a, b) => a.start.localeCompare(b.start))[0];
-      await this.notify(
+      const sent = await this.notify(
         [kid],
         {
           title: 'Prépare ton sac pour demain',
@@ -342,6 +349,7 @@ export class Notifier {
         },
         'bag',
       );
+      if (sent > 0) this.markSent(key);
     }
   }
 
@@ -363,12 +371,12 @@ export class Notifier {
       return `${c.name} : ${n ? `${n} note${n > 1 ? 's' : ''}` : 'aucune note'}`;
     });
     for (const p of parents) {
-      if (!this.once(`recap:${p.id}:${today}`)) continue;
-      await this.notify(
+      const sent = await this.notify(
         [p],
         { title: 'Le récap de la semaine', body: parts.join(' · '), url: '/#recap', tag: `recap-${today}` },
         'recap',
       );
+      if (sent > 0) this.markSent(`recap:${p.id}:${today}`);
     }
   }
 

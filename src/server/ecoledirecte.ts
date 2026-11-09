@@ -783,12 +783,16 @@ export class EcoleDirecte {
   }
 
   /** Pièce jointe d'un message, limitée à 20 Mo. */
-  async mailFile(fileId: string): Promise<EdFile> {
+  /** Pièce jointe d'un message de la boîte famille (`childId === null`) ou de celle d'un élève. */
+  async mailFile(childId: string | null, fileId: string): Promise<EdFile> {
     if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
     if (!/^\d{1,12}$/.test(fileId)) throw new EdError('Pièce jointe introuvable.', 404);
-    return this.download(
-      `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
-    );
+    // Le détail du message peut venir du cache : on réactive le bon établissement avant de télécharger.
+    const run = () =>
+      this.download(
+        `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
+      );
+    return childId === null ? this.forFamily(run) : this.forChild(childId, run);
   }
 
   /**
@@ -821,8 +825,11 @@ export class EcoleDirecte {
   async documentFile(id: string, fileType: string): Promise<EdFile> {
     if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
     if (!/^\d{1,12}$/.test(id) || !/^\w{0,40}$/.test(fileType)) throw new EdError('Document introuvable.', 404);
-    return this.download(
-      `telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=${fileType}&archive=false&anneeArchive=`,
+    // La liste vient d'un cache : entre-temps, un autre établissement a pu devenir le contexte actif.
+    return this.forFamily(() =>
+      this.download(
+        `telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=${fileType}&archive=false&anneeArchive=`,
+      ),
     );
   }
 

@@ -366,7 +366,7 @@ export class DemoEd implements EdClient {
     if (!found) throw new Error('Message introuvable.');
     return found;
   }
-  async mailFile(fileId: string): Promise<EdFile> {
+  async mailFile(_childId: string | null, fileId: string): Promise<EdFile> {
     return { type: 'application/pdf', name: `piece-${fileId}.pdf`, body: DEMO_PDF };
   }
   async documents(): Promise<EdDocument[]> {
