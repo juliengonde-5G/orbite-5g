@@ -209,7 +209,8 @@ export function createApp(options: AppOptions): http.Server {
     if (!h) return false;
     if (h === publicHost || extraHosts.has(h)) return true;
     const name = h.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
-    return name === 'localhost' || name.endsWith('.local') || isIP(name) !== 0;
+    // Noms locaux (« syno5g », « syno5g.local ») et adresses IP : réseau de la maison.
+    return name === 'localhost' || !name.includes('.') || name.endsWith('.local') || isIP(name) !== 0;
   };
 
   const onLan = (req: http.IncomingMessage): boolean => {
