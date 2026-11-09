@@ -32,7 +32,8 @@ import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd } from './demo.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
-import type { Dashboard, FamilyDashboard, SessionInfo } from '../shared/types.ts';
+import type { BagDay, Dashboard, FamilyDashboard, Kit, SessionInfo } from '../shared/types.ts';
+import { bagDate, bagItems, emptyKit } from '../shared/bag.ts';
 
 const projectRoot = new URL('../../', import.meta.url);
 const rootPath = fileURLToPath(projectRoot);
@@ -92,11 +93,7 @@ function loadAssets(): Map<string, Asset> {
   };
   walk(join(rootPath, 'public'), '/');
   walk(join(rootPath, 'dist', 'client'), '/client/');
-  for (const f of ['metrics.js']) {
-    try {
-      add('/shared/' + f, join(rootPath, 'dist', 'shared', f));
-    } catch {}
-  }
+  walk(join(rootPath, 'dist', 'shared'), '/shared/');
   try {
     add('/style.css', join(rootPath, 'dist', 'style.css'));
   } catch {}
@@ -163,6 +160,23 @@ interface ChecksDoc {
   done: Record<string, Record<string, string>>;
 }
 
+interface BagDoc {
+  version: 1;
+  /** Élève → jour → objets cochés « dans le sac ». */
+  packed: Record<string, Record<string, string[]>>;
+  kits: Record<string, Kit>;
+}
+
+/** Liste de textes courts saisie par la famille (matériel). */
+function cleanList(value: unknown, max = 20): string[] {
+  if (!Array.isArray(value)) throw new HttpError('Liste de matériel invalide.', 400);
+  const list = value
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim().slice(0, 60))
+    .filter(Boolean);
+  return [...new Set(list)].slice(0, max);
+}
+
 interface SecretDoc {
   version: 1;
   secret: string;
@@ -191,6 +205,19 @@ export function createApp(options: AppOptions): http.Server {
   const extraHosts = new Set((options.allowedHosts ?? []).map((h) => h.trim().toLowerCase()).filter(Boolean));
   const seen = vault.load<SeenDoc>('seen', { version: 1, seenAt: {} });
   const checks = vault.load<ChecksDoc>('checks', { version: 1, done: {} });
+  const bag = vault.load<BagDoc>('bag', { version: 1, packed: {}, kits: {} });
+  const validDay = (value: unknown): string => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HttpError('Date invalide.', 400);
+    const diff = (Date.parse(value + 'T12:00:00Z') - Date.parse(parisDate(new Date()) + 'T12:00:00Z')) / 86400000;
+    if (!(diff >= -1 && diff <= 14)) throw new HttpError('Date hors de la période proposée.', 400);
+    return value;
+  };
+  const pruneBag = () => {
+    const limit = new Date(parisDate(new Date()) + 'T12:00:00Z');
+    limit.setUTCDate(limit.getUTCDate() - 7);
+    const cut = limit.toISOString().slice(0, 10);
+    for (const days of Object.values(bag.packed)) for (const d of Object.keys(days)) if (d < cut) delete days[d];
+  };
   const secretDoc = vault.load<SecretDoc>('secret', { version: 1, secret: '' });
   if (!secretDoc.secret) {
     secretDoc.secret = randomBytes(32).toString('hex');
@@ -464,6 +491,84 @@ export function createApp(options: AppOptions): http.Server {
         pruneChecks();
         vault.save('checks', checks);
         return { checks: Object.keys(checks.done[childId] ?? {}) };
+      },
+    ],
+    [
+      'POST /api/bag',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const auto = bagDate();
+        const date = ctx.data.date === undefined || ctx.data.date === null ? auto.date : validDay(ctx.data.date);
+        const kit = bag.kits[childId] ?? emptyKit();
+        let timetableError: string | null = null;
+        let homeworkError: string | null = null;
+        let courses: BagDay['courses'] = [];
+        let homework: BagDay['homework'] = [];
+        try {
+          courses = await ed.timetable(childId, date);
+        } catch (e) {
+          timetableError = e instanceof EdError ? e.message : 'Emploi du temps indisponible.';
+        }
+        try {
+          homework = (await ed.homework(childId, null)).homework.filter((h) => h.dueDate === date);
+        } catch (e) {
+          homeworkError = e instanceof EdError ? e.message : 'Cahier de textes indisponible.';
+        }
+        const infos = (await ed.schoolInfos(childId)).filter(
+          (i) => (!i.from || i.from <= date) && (!i.to || i.to >= date),
+        );
+        const result: BagDay = {
+          date,
+          focus: date === auto.date ? auto.focus : date === parisDate(new Date()) ? 'today' : 'next',
+          courses,
+          homework,
+          infos,
+          items: bagItems(courses, homework, kit),
+          packed: bag.packed[childId]?.[date] ?? [],
+          kit,
+          timetableError,
+          homeworkError,
+        };
+        return result;
+      },
+    ],
+    [
+      'POST /api/bag/pack',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const date = validDay(ctx.data.date);
+        const item = ctx.data.itemId;
+        if (typeof item !== 'string' || !/^[a-z0-9-]{1,60}$/.test(item)) throw new HttpError('Objet invalide.', 400);
+        bag.packed[childId] ??= {};
+        const days = bag.packed[childId];
+        const set = new Set(days[date] ?? []);
+        if (ctx.data.packed === true) set.add(item);
+        else set.delete(item);
+        days[date] = [...set];
+        pruneBag();
+        vault.save('bag', bag);
+        return { packed: days[date] };
+      },
+    ],
+    [
+      'POST /api/bag/kit',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const input = ctx.data.kit as { always?: unknown; subjects?: unknown } | undefined;
+        if (!input || typeof input !== 'object') throw new HttpError('Matériel invalide.', 400);
+        const subjects: Record<string, string[]> = {};
+        if (input.subjects && typeof input.subjects === 'object' && !Array.isArray(input.subjects)) {
+          for (const [key, list] of Object.entries(input.subjects as Record<string, unknown>).slice(0, 40)) {
+            if (!/^[A-Z0-9 ]{1,60}$/.test(key)) throw new HttpError('Matière invalide.', 400);
+            subjects[key] = cleanList(list, 10);
+          }
+        }
+        bag.kits[childId] = { always: cleanList(input.always ?? [], 15), subjects };
+        vault.save('bag', bag);
+        return bag.kits[childId];
       },
     ],
     [

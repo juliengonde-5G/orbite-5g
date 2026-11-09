@@ -5,6 +5,8 @@
  */
 import type {
   AuthResult,
+  BagDay,
+  Kit,
   EdStatus,
   FamilyDashboard,
   HomeworkPage,
@@ -61,6 +63,10 @@ export const api = {
   check: (childId: string, homeworkId: string, done: boolean) =>
     call<{ checks: string[] }>('POST', '/api/check', { childId, homeworkId, done }),
   coaching: (childId: string) => call<{ text: string }>('POST', '/api/coaching', { childId }),
+  bag: (childId: string, date: string | null) => call<BagDay>('POST', '/api/bag', { childId, date }),
+  pack: (childId: string, date: string, itemId: string, packed: boolean) =>
+    call<{ packed: string[] }>('POST', '/api/bag/pack', { childId, date, itemId, packed }),
+  kit: (childId: string, kit: Kit) => call<Kit>('POST', '/api/bag/kit', { childId, kit }),
   admin: {
     members: () => call<{ members: MemberView[]; ed: EdStatus }>('GET', '/api/admin/members'),
     connect: (username: string, password: string, remember: boolean) =>

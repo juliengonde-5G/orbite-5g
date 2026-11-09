@@ -1,7 +1,7 @@
 /**
  * Mise en forme française des notes, moyennes et dates (jours civils à Paris).
  */
-import { nextSchoolDay, parisDate } from '../shared/metrics.ts';
+import { nextSchoolDay, parisDate, parisHour } from '../shared/metrics.ts';
 
 const num1 = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const num2 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
@@ -51,9 +51,7 @@ export function dueFocus(now = new Date()): string {
 }
 
 export function greeting(name: string, now = new Date()): string {
-  const hour = Number(
-    new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', hour12: false, timeZone: 'Europe/Paris' }).format(now),
-  );
+  const hour = parisHour(now);
   return `${hour >= 18 || hour < 5 ? 'Bonsoir' : 'Bonjour'} ${name}`;
 }
 

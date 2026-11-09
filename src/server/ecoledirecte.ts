@@ -41,8 +41,10 @@ import type {
   Dashboard,
   Homework,
   HomeworkPage,
+  Course,
   Note,
   Period,
+  SchoolInfo,
   Skill,
 } from '../shared/types.ts';
 
@@ -576,6 +578,51 @@ export class EcoleDirecte {
     throw new EdError('Élève introuvable.', 404);
   }
 
+  /** Trouve l'élève et active son établissement, puis exécute `run` avec son identifiant ÉcoleDirecte. */
+  private async forChild<T>(childId: string, run: (studentId: Id) => Promise<T>): Promise<T> {
+    if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
+    for (const account of this.accounts) {
+      const students = account.typeCompte === 'E' ? [account] : records<RawStudent>(account.profile?.eleves);
+      const student = students.find((s) => `${account.id}:${s.id}` === childId && isSecondary(classLabel(s)));
+      if (!student) continue;
+      await this.switchContext(account, 'Contexte de cet établissement indisponible.');
+      return run(student.id);
+    }
+    throw new EdError('Élève introuvable.', 404);
+  }
+
+  /** Emploi du temps de `from` à `to` inclus (`YYYY-MM-DD`), trié par date et heure. */
+  timetableForChild(childId: string, from: string, to: string): Promise<Course[]> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<unknown>(`E/${encodeURIComponent(studentId)}/emploidutemps.awp?verbe=get`, {
+        dateDebut: from,
+        dateFin: to,
+        avecTrous: false,
+      });
+      if (Number(body.code) !== 200) throw new EdError('Emploi du temps indisponible.');
+      return normalizeTimetable(body.data);
+    });
+  }
+
+  /** Informations de l'établissement (post-its de l'accueil ÉcoleDirecte). */
+  schoolInfosForChild(childId: string): Promise<SchoolInfo[]> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<{ postits?: unknown }>(
+        `E/${encodeURIComponent(studentId)}/timelineAccueilCommun.awp?verbe=get`,
+        {},
+      );
+      if (Number(body.code) !== 200) return [];
+      return records<{ id?: Id; contenu?: unknown; dateDebut?: string; dateFin?: string }>(body.data?.postits)
+        .map((p, i) => ({
+          id: String(p.id ?? i),
+          text: homeworkText(p.contenu),
+          from: frenchDate(p.dateDebut),
+          to: frenchDate(p.dateFin),
+        }))
+        .filter((p) => p.text);
+    });
+  }
+
   /**
    * Devoirs non faits à partir d'aujourd'hui (heure de Paris), en deux temps :
    * - `cursor === null` : premier affichage, tous les devoirs des 30 prochains
@@ -852,6 +899,60 @@ export function normalizeNotes(data: RawNotesData | null = {}): { periods: Perio
             skills: skills(n.elementsProgramme),
           })),
   };
+}
+
+/** « JJ/MM/AAAA » vers « AAAA-MM-JJ » ; `null` si la date est absente ou mal formée. */
+export function frenchDate(value: unknown): string | null {
+  const m = typeof value === 'string' ? /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim()) : null;
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
+interface RawCourse {
+  id?: Id;
+  text?: string;
+  matiere?: string;
+  codeMatiere?: string;
+  typeCours?: string;
+  start_date?: string;
+  end_date?: string;
+  prof?: string;
+  salle?: string;
+  dispense?: unknown;
+  isModifie?: boolean;
+  isAnnule?: boolean;
+}
+
+/**
+ * Convertit l'emploi du temps ÉcoleDirecte (« AAAA-MM-JJ HH:MM ») en cours triés.
+ * Les entrées sans date exploitable sont ignorées.
+ */
+export function normalizeTimetable(data: unknown): Course[] {
+  const at = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/;
+  return records<RawCourse>(data)
+    .flatMap((c, i) => {
+      const s = at.exec(String(c.start_date ?? ''));
+      const e = at.exec(String(c.end_date ?? ''));
+      if (!s?.[1] || !s[2]) return [];
+      return [
+        {
+          id: String(c.id ?? `${s[1]}-${s[2]}-${i}`),
+          date: s[1],
+          start: s[2],
+          end: e?.[2] ?? s[2],
+          subject: String(c.matiere || c.text || 'Cours').trim(),
+          code: String(c.codeMatiere || '').trim(),
+          room: String(c.salle || '').trim(),
+          teacher: String(c.prof || '').trim(),
+          kind: String(c.typeCours || 'COURS')
+            .trim()
+            .toLowerCase(),
+          cancelled: c.isAnnule === true,
+          modified: c.isModifie === true,
+          exempted: Number(c.dispense) > 0,
+        },
+      ];
+    })
+    .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 
 /**

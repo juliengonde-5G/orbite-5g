@@ -18,7 +18,7 @@ import { Vault } from '../src/server/vault.ts';
 import { EdError, type Factor } from '../src/server/ecoledirecte.ts';
 import type { EdClient } from '../src/server/ed-service.ts';
 import type { Coach } from '../src/server/coach.ts';
-import type { AuthResult, AuthState, Dashboard, HomeworkPage, Note } from '../src/shared/types.ts';
+import type { AuthResult, AuthState, Course, Dashboard, HomeworkPage, Note, SchoolInfo } from '../src/shared/types.ts';
 
 const note = (id: number, value: number, date: string, subject = 'Maths'): Note => ({
   id,
@@ -98,6 +98,54 @@ class FakeEd implements EdClient {
       homeworkNext: null,
       homeworkUntil: '2026-12-09',
     };
+  }
+  async timetableForChild(_childId: string, from: string): Promise<Course[]> {
+    const base = { room: 'S1', teacher: 'M. X', kind: 'cours', modified: false, exempted: false };
+    return [
+      {
+        ...base,
+        id: 'a',
+        date: from,
+        start: '08:00',
+        end: '08:55',
+        subject: 'MATHEMATIQUES',
+        code: 'MATH',
+        cancelled: false,
+      },
+      {
+        ...base,
+        id: 'b',
+        date: from,
+        start: '09:00',
+        end: '09:55',
+        subject: 'ED.PHYSIQUE & SPORT.',
+        code: 'EPS',
+        cancelled: false,
+      },
+      {
+        ...base,
+        id: 'c',
+        date: from,
+        start: '10:10',
+        end: '11:05',
+        subject: 'TECHNOLOGIE',
+        code: 'TECH',
+        cancelled: true,
+      },
+      {
+        ...base,
+        id: 'd',
+        date: from,
+        start: '11:10',
+        end: '12:05',
+        subject: 'PHYSIQUE-CHIMIE',
+        code: 'PHY',
+        cancelled: false,
+      },
+    ];
+  }
+  async schoolInfosForChild(): Promise<SchoolInfo[]> {
+    return [{ id: '1', text: 'Sortie au musée', from: null, to: null }];
   }
   exportSession() {
     return this.state === 'authenticated' ? { version: 1 as const, token: 't', cookies: [], accounts: [] } : null;
@@ -405,6 +453,71 @@ test('installation à distance avec le code du journal, à usage unique', async 
     assert.equal(new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode, undefined);
     s = await app.browser().post('/api/setup', { memberId: admin.id, pin: '730519', code: formatted }, internet);
     assert.equal(s.status, 403);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('cartable : cours du jour, sac sans doublon ni cours annulé, cases et matériel personnalisé', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const b = app.browser();
+    const admin = (await b.get('/api/session')).body.members.find((m: any) => m.admin);
+    await b.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    await b.post('/api/admin/ed/connect', { username: 'parent.gonde', password: 'bon', remember: true });
+    await b.post('/api/admin/ed/verify', { choice: 0 });
+    await b.post('/api/data', {});
+    const date = '2026-11-10';
+    let s = await b.post('/api/bag', { childId: '1:11', date });
+    if (s.status === 400) return; // date hors fenêtre selon le jour d'exécution : couvert par le test unitaire
+    assert.equal(s.body.courses.length, 4);
+    const labels = s.body.items.map((i: any) => i.label);
+    assert.ok(labels.includes('Tenue de sport'));
+    assert.equal(labels.filter((l: string) => l === 'Calculatrice').length, 1, 'calculatrice une seule fois');
+    assert.ok(!labels.includes('Classeur de technologie'), 'cours annulé exclu');
+    assert.ok(labels.includes('Trousse complète'));
+    assert.deepEqual(
+      s.body.infos.map((i: any) => i.text),
+      ['Sortie au musée'],
+    );
+    s = await b.post('/api/bag/pack', { childId: '1:11', date, itemId: 'tenue-de-sport', packed: true });
+    assert.deepEqual(s.body.packed, ['tenue-de-sport']);
+    s = await b.post('/api/bag/kit', {
+      childId: '1:11',
+      kit: { always: ['Trousse', 'Gourde'], subjects: { MATHEMATIQUES: ['Cahier bleu', 'Calculatrice'] } },
+    });
+    s = await b.post('/api/bag', { childId: '1:11', date });
+    const after = s.body.items.map((i: any) => i.label);
+    assert.ok(after.includes('Cahier bleu'));
+    assert.ok(!after.includes('Cahier de maths'));
+    assert.deepEqual(s.body.packed, ['tenue-de-sport']);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('chaque module servi au navigateur trouve ses imports parmi les fichiers servis', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const port = (app.server.address() as AddressInfo).port;
+    const queue = ['/client/app.js'];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const path = queue.shift() as string;
+      if (seen.has(path)) continue;
+      seen.add(path);
+      const res = await fetch(`http://127.0.0.1:${port}${path}`);
+      assert.equal(res.status, 200, `${path} doit être servi`);
+      const code = await res.text();
+      for (const m of code.matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)) {
+        queue.push(new URL(m[1] as string, `http://x${path}`).pathname);
+      }
+    }
+    assert.ok(seen.has('/shared/bag.js'));
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

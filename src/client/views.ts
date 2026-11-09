@@ -19,6 +19,7 @@ import {
 } from './format.ts';
 import { orbit } from './orbit.ts';
 import { progressChart } from './chart.ts';
+import { bagCard } from './bag-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note } from '../shared/types.ts';
@@ -29,6 +30,9 @@ export interface Actions {
   toggleCheck(childId: string, homeworkId: string, done: boolean): void;
   loadHomework(childId: string, more?: boolean): void;
   loadCoaching(childId: string): void;
+  loadBag(childId: string, date: string | null): void;
+  togglePacked(childId: string, date: string, itemId: string, packed: boolean): void;
+  editKit(child: Child): void;
   refresh(): void;
   rerender(): void;
 }
@@ -45,7 +49,7 @@ export function childColor(childId: string): ColorKey {
   return order[Math.max(0, index) % order.length] ?? 'comete';
 }
 
-const accent = (childId: string) => ({ '--accent': `var(--c-${childColor(childId)})` });
+export const accent = (childId: string) => ({ '--accent': `var(--c-${childColor(childId)})` });
 
 function gradePill(n: Note): HTMLElement {
   const v = toTwenty(n.value, n.outOf);
@@ -60,7 +64,7 @@ function gradePill(n: Note): HTMLElement {
   );
 }
 
-function subjectMark(subject: string): HTMLElement {
+export function subjectMark(subject: string): HTMLElement {
   return h('span.subject-mark', { style: { '--h': String(subjectHue(subject.split(' · ')[0] ?? subject)) } });
 }
 
@@ -94,11 +98,11 @@ function noteRow(child: Child, n: Note, showChild = false, showSubject = true): 
   );
 }
 
-function emptyState(title: string, text: string, action?: HTMLElement): HTMLElement {
+export function emptyState(title: string, text: string, action?: HTMLElement): HTMLElement {
   return h('div.empty', h('p.empty-title', title), h('p.empty-text', text), action);
 }
 
-function sectionHead(title: string, extra?: HTMLElement | string | false): HTMLElement {
+export function sectionHead(title: string, extra?: HTMLElement | string | false): HTMLElement {
   return h('header.section-head', h('h2', title), extra || null);
 }
 
@@ -130,7 +134,7 @@ export function childSwitcher(actions: Actions): HTMLElement | null {
 
 /* ---------- Devoirs ---------- */
 
-function taskRow(child: Child, t: Homework, actions: Actions, checks: Set<string>): HTMLElement {
+export function taskRow(child: Child, t: Homework, actions: Actions, checks: Set<string>): HTMLElement {
   const done = checks.has(t.id);
   const open = state.openTask === t.id;
   return h(
@@ -320,6 +324,7 @@ export function studentHome(child: Child, actions: Actions, asParent: boolean): 
         ),
     ),
     child.error && h('p.inline-error', child.error),
+    bagCard(child, actions),
     h('div.hero', orbit(child, { fresh: state.fresh })),
     coachingLine(child, actions),
     homeworkBlock(child, actions, 'focus'),
@@ -367,6 +372,11 @@ export function familyHome(actions: Actions): HTMLElement {
           disabled: state.dataLoading,
         },
         icon('refresh'),
+      ),
+      h(
+        'button.icon-button',
+        { type: 'button', 'aria-label': 'Réglages', onclick: () => actions.go('me') },
+        icon('gear'),
       ),
     ),
     edBanner(actions),

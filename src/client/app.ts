@@ -7,8 +7,10 @@
 import { api, ApiError } from './api.ts';
 import { clear, h, icon, tap } from './dom.ts';
 import { renderLock } from './lock.ts';
-import { meView } from './settings.ts';
 import { resetData, state, type Route } from './state.ts';
+import { bagKey, bagView, kitSheet } from './bag-view.ts';
+import { meView, sheet } from './settings.ts';
+import { parisHour } from '../shared/metrics.ts';
 import { childColor, familyHome, gradesView, progressView, studentHome, tasksView, type Actions } from './views.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -16,6 +18,7 @@ const root = document.getElementById('app') as HTMLElement;
 const HASH: Record<Route, string> = {
   home: 'accueil',
   child: 'eleve',
+  bag: 'cartable',
   tasks: 'devoirs',
   grades: 'notes',
   progress: 'progres',
@@ -177,8 +180,57 @@ const actions: Actions = {
   },
   refresh() {
     tap();
+    state.bags.clear();
     void loadData(true);
   },
+  loadBag(childId, date) {
+    const key = bagKey(childId, date);
+    const current = state.bags.get(key);
+    if (current?.loading) return;
+    const entry = { day: current?.day ?? null, loading: true, error: null as string | null };
+    state.bags.set(key, entry);
+    api
+      .bag(childId, date)
+      .then((day) => {
+        entry.day = day;
+      })
+      .catch((e) => {
+        entry.error = e instanceof ApiError ? e.message : 'Cartable indisponible.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+  togglePacked(childId, date, itemId, packed) {
+    for (const b of state.bags.values()) {
+      const d = b.day;
+      if (!d || d.date !== date || !b) continue;
+      const set = new Set(d.packed);
+      if (packed) set.add(itemId);
+      else set.delete(itemId);
+      d.packed = [...set];
+    }
+    render();
+    api.pack(childId, date, itemId, packed).catch((e) => {
+      toast(e instanceof ApiError ? e.message : 'Case non enregistrée.');
+    });
+  },
+  editKit(child) {
+    const day = state.bags.get(bagKey(child.id, state.bagDay))?.day;
+    if (!day) return;
+    kitSheet(child, day, sheet, async (kit) => {
+      try {
+        await api.kit(child.id, kit);
+        for (const key of [...state.bags.keys()]) if (key.startsWith(child.id + '|')) state.bags.delete(key);
+        toast('Matériel enregistré.');
+        render();
+      } catch (e) {
+        toast(e instanceof ApiError ? e.message : 'Matériel non enregistré.');
+      }
+    });
+  },
+
   rerender: () => render(),
 };
 
@@ -189,10 +241,10 @@ function tabBar(): HTMLElement {
   const parent = me?.role === 'parent';
   const tabs: [Route, string, string][] = [
     ['home', parent ? 'Famille' : 'Accueil', parent ? 'family' : 'home'],
+    ['bag', 'Cartable', 'bag'],
     ['tasks', 'Devoirs', 'tasks'],
     ['grades', 'Notes', 'grades'],
     ['progress', 'Progrès', 'chart'],
-    ['me', parent ? 'Réglages' : 'Moi', 'user'],
   ];
   const current = state.route === 'child' ? 'home' : state.route;
   return h(
@@ -261,6 +313,8 @@ function currentView(): HTMLElement {
   const child = children.find((c) => c.id === state.selected) ?? children[0];
   if (!child) return familyHome(actions);
   switch (state.route) {
+    case 'bag':
+      return bagView(child, actions);
     case 'tasks':
       return tasksView(child, actions);
     case 'grades':
@@ -311,6 +365,9 @@ function unlocked(session: SessionInfo): void {
   applyPrefs();
   clear(root);
   state.route = routeFromHash();
+  // Le matin, un élève arrive directement sur son cartable du jour.
+  const hour = parisHour(new Date());
+  if (!location.hash && session.me?.role === 'child' && hour >= 5 && hour < 9) state.route = 'bag';
   render();
   void loadData();
   void loadMembers();

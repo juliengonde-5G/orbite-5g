@@ -223,3 +223,58 @@ export interface FamilyDashboard extends Dashboard {
   /** Devoirs cochés dans Orbite (non transmis à ÉcoleDirecte), par élève. */
   checks: Record<string, string[]>;
 }
+
+/* ---------- Cartable ---------- */
+
+/** Cours de l'emploi du temps ÉcoleDirecte, heures locales « HH:MM ». */
+export interface Course {
+  id: string;
+  date: string;
+  start: string;
+  end: string;
+  subject: string;
+  code: string;
+  room: string;
+  teacher: string;
+  /** `cours`, `permanence` ou autre type renvoyé par ÉcoleDirecte (événement, congé…). */
+  kind: string;
+  cancelled: boolean;
+  modified: boolean;
+  exempted: boolean;
+}
+
+/** Information du collège affichée sur l'accueil ÉcoleDirecte (post-it), en texte brut. */
+export interface SchoolInfo {
+  id: string;
+  text: string;
+  from: string | null;
+  to: string | null;
+}
+
+export interface BagItem {
+  id: string;
+  label: string;
+  /** Matière qui justifie l'objet, ou `null` pour le matériel de tous les jours. */
+  subject: string | null;
+}
+
+/** Matériel personnalisé d'un élève : par matière (clé normalisée) et de tous les jours. */
+export interface Kit {
+  always: string[];
+  subjects: Record<string, string[]>;
+}
+
+/** Réponse de `/api/bag` : tout ce qu'il faut pour préparer le cartable d'un jour. */
+export interface BagDay {
+  date: string;
+  /** `today` ou `next` : jour de classe suivant, proposé à partir de 16 h. */
+  focus: 'today' | 'next';
+  courses: Course[];
+  homework: Homework[];
+  infos: SchoolInfo[];
+  items: BagItem[];
+  packed: string[];
+  kit: Kit;
+  timetableError: string | null;
+  homeworkError: string | null;
+}

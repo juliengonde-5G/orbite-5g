@@ -8,7 +8,17 @@
 import { parisDate } from '../shared/metrics.ts';
 import type { Factor, SavedAuth } from './ecoledirecte.ts';
 import type { EdClient } from './ed-service.ts';
-import type { AuthResult, AuthState, Child, Dashboard, Homework, HomeworkPage, Note } from '../shared/types.ts';
+import type {
+  AuthResult,
+  AuthState,
+  Child,
+  Course,
+  Dashboard,
+  Homework,
+  HomeworkPage,
+  Note,
+  SchoolInfo,
+} from '../shared/types.ts';
 
 const SUBJECTS = [
   'MATHEMATIQUES',
@@ -142,6 +152,55 @@ export class DemoEd implements EdClient {
       homeworkNext: null,
       homeworkUntil: day(29),
     };
+  }
+  async timetableForChild(childId: string, from: string): Promise<Course[]> {
+    const weekday = new Date(from + 'T12:00:00Z').getUTCDay();
+    if (weekday === 0 || weekday === 6) return [];
+    const shift = Number(childId.slice(-1)) % 3;
+    const week: Record<number, string[]> = {
+      1: ['MATHEMATIQUES', 'FRANCAIS', 'ANGLAIS LV1', 'HISTOIRE-GEOGRAPHIE', 'SVT', 'TECHNOLOGIE'],
+      2: [
+        'FRANCAIS',
+        'MATHEMATIQUES',
+        'ED.PHYSIQUE & SPORT.',
+        'ED.PHYSIQUE & SPORT.',
+        'ANGLAIS LV1',
+        'ARTS PLASTIQUES',
+      ],
+      3: ['MATHEMATIQUES', 'PHYSIQUE-CHIMIE', 'FRANCAIS', 'EDUCATION MUSICALE'],
+      4: ['HISTOIRE-GEOGRAPHIE', 'ANGLAIS LV1', 'MATHEMATIQUES', 'FRANCAIS', 'ED.PHYSIQUE & SPORT.', 'SVT'],
+      5: ['FRANCAIS', 'SVT', 'MATHEMATIQUES', 'TECHNOLOGIE', 'HISTOIRE-GEOGRAPHIE', 'ANGLAIS LV1'],
+    };
+    const slots = ['08:00', '09:00', '10:10', '11:10', '13:30', '14:30', '15:40'];
+    const subjects = week[((weekday + shift - 1) % 5) + 1] ?? [];
+    return subjects.map((subject, i) => {
+      const start = slots[i] ?? '16:00';
+      const [h = '8', m = '00'] = start.split(':');
+      return {
+        id: `${from}-${i}`,
+        date: from,
+        start,
+        end: `${String(Number(h)).padStart(2, '0')}:${String(Number(m) + 55 > 59 ? Number(m) - 5 : Number(m) + 55).padStart(2, '0')}`,
+        subject,
+        code: subject.slice(0, 4),
+        room: `Salle ${101 + i * 7}`,
+        teacher: ['M. Martin', 'Mme Bernard', 'Mme Petit', 'M. Durand', 'Mme Leroy', 'M. Moreau'][i % 6] ?? '',
+        kind: 'cours',
+        cancelled: i === 3 && weekday === 4,
+        modified: false,
+        exempted: false,
+      };
+    });
+  }
+  async schoolInfosForChild(): Promise<SchoolInfo[]> {
+    return [
+      {
+        id: 'demo-1',
+        text: 'Photo de classe jeudi matin : pense à une tenue soignée.',
+        from: day(-2),
+        to: day(10),
+      },
+    ];
   }
   exportSession(): SavedAuth | null {
     return this.state === 'authenticated' ? { version: 1, token: 'demo', cookies: [], accounts: [] } : null;

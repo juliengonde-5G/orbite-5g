@@ -23,8 +23,8 @@
  */
 import { EcoleDirecte, EdError, type Factor, type SavedAuth, type VerifyInput } from './ecoledirecte.ts';
 import type { Vault } from './vault.ts';
-import { noteKey } from '../shared/metrics.ts';
-import type { AuthResult, AuthState, Dashboard, EdStatus, HomeworkPage } from '../shared/types.ts';
+import { noteKey, parisHour } from '../shared/metrics.ts';
+import type { AuthResult, AuthState, Course, Dashboard, EdStatus, HomeworkPage, SchoolInfo } from '../shared/types.ts';
 
 export interface EdClient {
   state: AuthState;
@@ -34,6 +34,8 @@ export interface EdClient {
   verify(input: VerifyInput): Promise<AuthResult>;
   dashboard(): Promise<Dashboard>;
   homeworkForChild(childId: string, options: { cursor: number | null }): Promise<HomeworkPage>;
+  timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
+  schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   exportSession(): SavedAuth | null;
   restoreSession(saved: unknown): void;
 }
@@ -88,6 +90,8 @@ export class EdService {
   private history: HistoryDoc;
   private queue: Promise<unknown> = Promise.resolve();
   private homeworkCache = new Map<string, { time: number; value: HomeworkPage }>();
+  private timetableCache = new Map<string, { time: number; value: Course[] }>();
+  private infoCache = new Map<string, { time: number; value: SchoolInfo[] }>();
   /** Saisie en cours (attente de vérification) : jamais écrite sur disque. */
   private pending: { username: string; password: string; remember: boolean } | null = null;
 
@@ -326,14 +330,39 @@ export class EdService {
     });
   }
 
+  /** Emploi du temps d'un jour pour un élève (cache 15 min). */
+  timetable(childId: string, date: string, maxAge = 15 * 60000): Promise<Course[]> {
+    return this.serial(async () => {
+      const key = childId + ':' + date;
+      const cached = this.timetableCache.get(key);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      if (!this.cache.dashboard?.children.some((c) => c.id === childId)) throw new EdError('Élève introuvable.', 404);
+      const value = await this.call((c) => c.timetableForChild(childId, date, date));
+      this.timetableCache.set(key, { time: Date.now(), value });
+      if (this.timetableCache.size > 60) this.timetableCache.delete(this.timetableCache.keys().next().value as string);
+      return value;
+    });
+  }
+
+  /** Informations du collège (post-its), cache 1 h ; une erreur donne une liste vide. */
+  schoolInfos(childId: string): Promise<SchoolInfo[]> {
+    return this.serial(async () => {
+      const cached = this.infoCache.get(childId);
+      if (cached && Date.now() - cached.time < 3600000) return cached.value;
+      try {
+        const value = await this.call((c) => c.schoolInfosForChild(childId));
+        this.infoCache.set(childId, { time: Date.now(), value });
+        return value;
+      } catch {
+        return [];
+      }
+    });
+  }
+
   /** Rafraîchissement de fond : garde la session active et l'historique à jour (6 h – 22 h). */
   startBackground(intervalMs = 30 * 60000): NodeJS.Timeout {
     const timer = setInterval(() => {
-      const hour = Number(
-        new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }).format(
-          new Date(),
-        ),
-      );
+      const hour = parisHour(new Date());
       if (hour < 6 || hour >= 22 || !this.hasAccount || this.doc.attention) return;
       if (Date.now() - this.cache.time < 2 * 3600000) return;
       this.dashboard(0).catch(() => undefined);

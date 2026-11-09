@@ -205,6 +205,14 @@ export function parisDate(now: Date): string {
   }).format(now);
 }
 
+/** Heure (0-23) à Paris. Ne pas analyser une heure formatée en français (« 18 h »). */
+export function parisHour(now: Date): number {
+  const part = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Paris' })
+    .formatToParts(now)
+    .find((p) => p.type === 'hour');
+  return Number(part?.value ?? 0) % 24;
+}
+
 /**
  * Prochain jour ouvré (lundi à vendredi) après aujourd'hui à Paris. Les vacances
  * et jours fériés ne sont pas connus. Midi UTC sert d'ancre : ajouter des jours ne
