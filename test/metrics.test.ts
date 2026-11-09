@@ -224,3 +224,33 @@ test('sous-matière sans référentiel : code parent explicite, aucune matière 
   assert.equal(notes[0]?.subject, 'XYZ · Ecrit');
   assert.equal(notes[1]?.subject, 'Mathématiques');
 });
+
+test('coefficients masqués par l’établissement : notes comptées avec un coefficient 1', async () => {
+  const { normalizeNotes } = await import('../src/server/ecoledirecte.ts');
+  const hidden = normalizeNotes({
+    parametrage: { coefficientNote: false },
+    notes: [{ id: 1, valeur: '12', noteSur: '20', coef: '0', codeMatiere: 'MATH', date: '2026-11-02' }],
+  });
+  assert.equal(hidden.notes[0]?.coefficient, 1);
+  const allZero = normalizeNotes({
+    notes: [
+      { id: 1, valeur: '12', noteSur: '20', coef: '0', codeMatiere: 'MATH' },
+      { id: 2, valeur: '15', noteSur: '20', coef: 0, codeMatiere: 'FRANC' },
+    ],
+  });
+  assert.deepEqual(
+    allZero.notes.map((n) => n.coefficient),
+    [1, 1],
+  );
+  const mixed = normalizeNotes({
+    notes: [
+      { id: 1, valeur: '12', noteSur: '20', coef: '2', codeMatiere: 'MATH' },
+      { id: 2, valeur: '15', noteSur: '20', coef: '0', codeMatiere: 'FRANC' },
+    ],
+  });
+  assert.deepEqual(
+    mixed.notes.map((n) => n.coefficient),
+    [2, 0],
+    'un coefficient 0 isolé reste exclu',
+  );
+});

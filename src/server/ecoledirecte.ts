@@ -146,6 +146,7 @@ export interface RawNotesData {
     moyenneClasse?: boolean;
     affichageNote?: boolean;
     affichageMoyenneDevoir?: boolean;
+    coefficientNote?: boolean;
   };
   notes?: RawNote[];
   periodes?: RawPeriod[];
@@ -863,6 +864,11 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
 export function normalizeNotes(data: RawNotesData | null = {}): { periods: Period[]; notes: Note[] } {
   const settings = data?.parametrage || {};
   const periodes = records<RawPeriod>(data?.periodes);
+  const rawNotes = records<RawNote>(data?.notes);
+  // Établissement qui masque les coefficients : toutes les notes arrivent avec
+  // `coef: 0`. On les compte alors avec un coefficient 1 au lieu de les exclure.
+  const hiddenCoefficients =
+    settings.coefficientNote === false || (rawNotes.length > 0 && rawNotes.every((n) => !(number(n.coef) ?? 0)));
   return {
     periods: periodes.map((p) => ({
       id: p.codePeriode || p.idPeriode,
@@ -879,7 +885,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): { periods: Perio
     notes:
       settings.affichageNote === false
         ? []
-        : records<RawNote>(data?.notes).map((n) => ({
+        : rawNotes.map((n) => ({
             id: n.id,
             ...noteSubject(n, periodes),
             subjectId: `${n.codeMatiere || n.libelleMatiere}:${n.codeSousMatiere || ''}`,
@@ -889,7 +895,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): { periods: Perio
             value: n.enLettre ? null : number(n.valeur),
             raw: String(n.valeur ?? ''),
             outOf: number(n.noteSur),
-            coefficient: number(n.coef) ?? 1,
+            coefficient: hiddenCoefficients ? 1 : (number(n.coef) ?? 1),
             classAverage:
               settings.affichageMoyenneDevoir === false || settings.moyenneClasse === false
                 ? null
