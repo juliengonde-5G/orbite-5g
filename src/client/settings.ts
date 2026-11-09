@@ -7,7 +7,7 @@ import { clear, h, icon, tap } from './dom.ts';
 import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
 import { sky } from './views.ts';
-import type { AuthResult, ColorKey, MemberView, Prefs } from '../shared/types.ts';
+import type { AuthResult, ClaudeKeyStatus, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
 export interface SettingsActions {
   rerender(): void;
@@ -303,6 +303,132 @@ function edCard(actions: SettingsActions): HTMLElement {
         : h('p.hint', 'Seul le parent administrateur gère la connexion.'),
     ),
   );
+}
+
+/* ---------- Clé API Claude ---------- */
+
+let claudeStatus: ClaudeKeyStatus | null = null;
+let claudeLoading = false;
+
+function claudeKeySheet(actions: SettingsActions, replacing: boolean): void {
+  sheet(replacing ? 'Remplacer la clé Claude' : 'Ajouter une clé Claude', (close) => {
+    const input = h('input.text-input', {
+      type: 'password',
+      autocomplete: 'off',
+      spellcheck: 'false',
+      placeholder: 'sk-ant-…',
+      'aria-label': 'Clé API Anthropic',
+    });
+    const error = h('p.form-error', { role: 'alert' });
+    const body = h(
+      'form.sheet-body',
+      {
+        onsubmit: async (e: Event) => {
+          e.preventDefault();
+          error.textContent = '';
+          body.classList.add('is-busy');
+          try {
+            claudeStatus = await api.admin.setClaudeKey(input.value);
+            close();
+            actions.toast(
+              claudeStatus.check === 'ok'
+                ? 'Clé vérifiée et enregistrée.'
+                : 'Clé enregistrée ; Anthropic n’a pas pu être joint pour la vérifier.',
+            );
+            await actions.reloadSession();
+            actions.rerender();
+          } catch (err) {
+            error.textContent = err instanceof ApiError ? err.message : 'Clé non enregistrée.';
+          } finally {
+            body.classList.remove('is-busy');
+          }
+        },
+      },
+      h(
+        'p.sheet-lead',
+        'Colle la clé API créée sur console.anthropic.com (rubrique API Keys). Orbite la vérifie auprès d’Anthropic avant de l’enregistrer.',
+      ),
+      input,
+      error,
+      h(
+        'p.hint',
+        'Elle reste chiffrée sur le NAS et n’est jamais réaffichée. Elle sert aux conseils du jour et, bientôt, au soutien scolaire ; seules des données sans nom ni identité sont envoyées.',
+      ),
+      h(
+        'div.sheet-actions',
+        h('button.button', { type: 'button', onclick: close }, 'Annuler'),
+        h('button.button.button-primary', { type: 'submit' }, 'Vérifier et enregistrer'),
+      ),
+    );
+    queueMicrotask(() => input.focus());
+    return body;
+  });
+}
+
+/** Réglage de la clé API Claude (parent administrateur). */
+function claudeCard(actions: SettingsActions): HTMLElement {
+  if (!claudeStatus && !claudeLoading) {
+    claudeLoading = true;
+    api.admin
+      .claude()
+      .then((s) => {
+        claudeStatus = s;
+        actions.rerender();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        claudeLoading = false;
+      });
+  }
+  const s = claudeStatus;
+  const app = s?.source === 'app';
+  return h(
+    'section.block',
+    h('header.section-head', h('h2', 'Claude (IA)')),
+    h(
+      `div.ed-card.link-${s?.configured ? 'connected' : 'disconnected'}`,
+      h('p.ed-state', h('span.dot'), !s ? 'Chargement…' : s.configured ? 'Clé enregistrée' : 'Aucune clé'),
+      s?.masked && h('p.ed-line', `Clé ${s.masked}`),
+      s &&
+        h(
+          'p.ed-line',
+          app
+            ? `Saisie dans Orbite ${s.updatedAt ? sinceText(s.updatedAt) : ''}`.trim()
+            : s.source === 'env'
+              ? 'Définie dans le projet Container Manager (ANTHROPIC_API_KEY)'
+              : 'Conseils du jour et soutien scolaire désactivés.',
+        ),
+      app && s?.check === 'unreachable' && h('p.ed-line.ed-message', 'Pas encore vérifiée auprès d’Anthropic.'),
+      h(
+        'div.row-actions',
+        h(
+          'button.button.button-primary',
+          { type: 'button', disabled: !s, onclick: () => claudeKeySheet(actions, !!s?.configured) },
+          s?.configured ? 'Remplacer la clé' : 'Ajouter une clé',
+        ),
+        app &&
+          h(
+            'button.button',
+            {
+              type: 'button',
+              onclick: () =>
+                confirmSheet('Retirer la clé Claude ?', envNote(s), 'Retirer', async () => {
+                  claudeStatus = await api.admin.removeClaudeKey();
+                  await actions.reloadSession();
+                  actions.rerender();
+                }),
+            },
+            'Retirer',
+          ),
+      ),
+    ),
+  );
+}
+
+function envNote(s: ClaudeKeyStatus | null): string {
+  return s?.source === 'app'
+    ? 'La clé saisie dans Orbite sera effacée du NAS. Si une clé est définie dans le projet Container Manager, elle reprendra le relais ; sinon les fonctions IA seront désactivées.'
+    : 'Les fonctions IA seront désactivées.';
 }
 
 /* ---------- Profils de la famille ---------- */
@@ -651,6 +777,7 @@ export function meView(actions: SettingsActions): HTMLElement {
       ),
     ),
     me.role === 'parent' && edCard(actions),
+    me.role === 'parent' && me.admin && claudeCard(actions),
     me.role === 'parent' && me.admin && familyBlock(actions),
     installHint(),
     h(

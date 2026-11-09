@@ -50,7 +50,7 @@ Chaque modification poussée sur `main` publie une nouvelle image `ghcr.io/julie
 | `ORBITE_FAMILY` | Profils du premier démarrage : `Camille:parent+admin, Léo:enfant:5e`. Ignorée ensuite. |
 | `ORBITE_PUBLIC_URL` | Adresse HTTPS publique (cookies `Secure`, hôte autorisé). |
 | `ORBITE_ALLOWED_HOSTS` | Autres noms d'hôte autorisés, séparés par des virgules. |
-| `ANTHROPIC_API_KEY` | Active le conseil du jour (Claude). Facultatif. |
+| `ANTHROPIC_API_KEY` | Active le conseil du jour (Claude). Facultatif : la clé peut aussi être saisie dans Réglages → Claude (IA), où elle est gardée chiffrée et prend le pas sur cette variable. |
 | `ANTHROPIC_MODEL` | Modèle utilisé, `claude-haiku-5-5` par défaut. |
 | `ORBITE_DATA_DIR` | Dossier du coffre chiffré (`/data` dans l'image). |
 | `ED_API_VERSION` | Version d'API ÉcoleDirecte si le site en exige une autre. |

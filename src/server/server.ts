@@ -34,6 +34,7 @@ import { DemoEd } from './demo.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
   BagDay,
+  ClaudeKeyStatus,
   Dashboard,
   FamilyDashboard,
   Kit,
@@ -177,6 +178,17 @@ interface BagDoc {
   kits: Record<string, Kit>;
 }
 
+interface ClaudeDoc {
+  version: 1;
+  /** Clé API saisie par le parent administrateur ; `null` = variable d'environnement. */
+  key: string | null;
+  updatedAt: string | null;
+  check: ClaudeKeyStatus['check'];
+}
+
+/** « sk-ant-…a1B2 » : assez pour reconnaître la clé, jamais assez pour s'en servir. */
+const maskKey = (key: string) => (key.length > 14 ? `${key.slice(0, 7)}…${key.slice(-4)}` : '••••');
+
 interface MailDoc {
   version: 1;
   /** Message famille (`f.<id>`) → élèves avec qui un parent l'a partagé. */
@@ -230,6 +242,19 @@ export function createApp(options: AppOptions): http.Server {
   const family = new Family(vault, options.familySeed ?? '');
   const ed = new EdService(vault, options.edFactory, options.refreshFloor);
   const coach = options.coach ?? new ClaudeCoach();
+  const claude = vault.load<ClaudeDoc>('claude', { version: 1, key: null, updatedAt: null, check: null });
+  if (claude.key) coach.setKey(claude.key);
+  const envKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  const claudeStatus = (): ClaudeKeyStatus => {
+    const key = claude.key || envKey;
+    return {
+      configured: coach.configured,
+      source: claude.key ? 'app' : envKey ? 'env' : null,
+      masked: key ? maskKey(key) : null,
+      updatedAt: claude.key ? claude.updatedAt : null,
+      check: claude.key ? claude.check : null,
+    };
+  };
   const assets = loadAssets();
   const version = options.version ?? '1.0.0';
   const publicHost = (() => {
@@ -804,6 +829,41 @@ export function createApp(options: AppOptions): http.Server {
       async (ctx) => {
         requireParent(ctx);
         return { members: family.members.map((m) => family.view(m)), ed: ed.status() };
+      },
+    ],
+    [
+      'GET /api/admin/claude',
+      async (ctx) => {
+        requireAdmin(ctx);
+        return claudeStatus();
+      },
+    ],
+    [
+      'POST /api/admin/claude',
+      async (ctx) => {
+        requireAdmin(ctx);
+        const key = typeof ctx.data.key === 'string' ? ctx.data.key.trim() : '';
+        if (!/^sk-ant-[\w-]{20,280}$/.test(key))
+          throw new HttpError('Clé invalide : elle commence par « sk-ant- » (console.anthropic.com → API Keys).', 400);
+        const check = await coach.check(key);
+        if (check === 'refused')
+          throw new HttpError('Anthropic refuse cette clé. Vérifie-la ou crée-en une nouvelle.', 400);
+        claude.key = key;
+        claude.updatedAt = new Date().toISOString();
+        claude.check = check;
+        vault.save('claude', claude);
+        coach.setKey(key);
+        return claudeStatus();
+      },
+    ],
+    [
+      'POST /api/admin/claude/remove',
+      async (ctx) => {
+        requireAdmin(ctx);
+        Object.assign(claude, { key: null, updatedAt: null, check: null });
+        vault.save('claude', claude);
+        coach.setKey(null);
+        return claudeStatus();
       },
     ],
     [
