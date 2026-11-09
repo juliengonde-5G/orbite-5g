@@ -254,3 +254,48 @@ test('coefficients masqués par l’établissement : notes comptées avec un coe
     'un coefficient 0 isolé reste exclu',
   );
 });
+
+test('compétences : identifiants ÉcoleDirecte, valeur brute non reconnue, échelle de l’établissement', async () => {
+  const { normalizeNotes, skills } = await import('../src/server/ecoledirecte.ts');
+  assert.deepEqual(
+    skills([
+      {
+        libelleCompetence: 'Restituer',
+        descriptif: 'Lexique',
+        valeur: '2',
+        idElemProg: 1119,
+        idCompetence: 336,
+        afc: 0,
+      },
+      { libelleCompetence: 'Raisonner', valeur: 'Abs', idElemProg: '2375', afc: 1 },
+      { libelleCompetence: 'Lire', valeur: '', idElemProg: 0 },
+    ]),
+    [
+      { name: 'Restituer', detail: 'Lexique', level: 2, elemId: '1119', competenceId: '336' },
+      { name: 'Raisonner', detail: '', level: null, elemId: '2375', afc: true, raw: 'Abs' },
+      { name: 'Lire', detail: '', level: null },
+    ],
+  );
+  const b64 = (v: string) => Buffer.from(v).toString('base64');
+  const data = normalizeNotes({
+    parametrage: {
+      libelleEval1: b64('Maîtrise insuffisante'),
+      libelleEval2: b64('Maîtrise fragile'),
+      libelleEval3: b64('Maîtrise satisfaisante'),
+      libelleEval4: b64('Très bonne maîtrise'),
+      couleurEval1: '#ff0000',
+      couleurEval4: 'bleu',
+    },
+    notes: [],
+  });
+  assert.deepEqual(
+    data.skillScale?.map((l) => [l.level, l.label, l.color]),
+    [
+      [1, 'Maîtrise insuffisante', '#ff0000'],
+      [2, 'Maîtrise fragile', null],
+      [3, 'Maîtrise satisfaisante', null],
+      [4, 'Très bonne maîtrise', null],
+    ],
+  );
+  assert.equal(normalizeNotes({ notes: [] }).skillScale, undefined);
+});
