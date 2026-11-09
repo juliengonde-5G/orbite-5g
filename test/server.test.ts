@@ -277,6 +277,25 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
       req.end();
     });
     assert.equal(status, 403);
+    // Même nom, relayé en HTTPS par le reverse proxy local : accepté, sans privilèges « maison ».
+    const proxied = await new Promise<{ status: number; body: string }>((resolve) => {
+      const req = request(
+        {
+          host: '127.0.0.1',
+          port: (app.server.address() as AddressInfo).port,
+          path: '/api/session',
+          headers: { host: 'orbite.example.fr', 'x-forwarded-proto': 'https', 'x-forwarded-for': '203.0.113.9' },
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        },
+      );
+      req.end();
+    });
+    assert.equal(proxied.status, 200);
+    assert.equal(JSON.parse(proxied.body).onLan, false);
     s = await julien.post('/api/data', {}, { origin: 'https://evil.example' });
     assert.equal(s.status, 403);
   } finally {

@@ -571,7 +571,12 @@ export function createApp(options: AppOptions): http.Server {
       const host = req.headers.host || '';
       const path = new URL(req.url ?? '/', 'http://orbite.invalid').pathname;
       if (path === '/healthz') return json(200, { ok: true, version });
-      if (!hostAllowed(host)) throw new HttpError('Hôte non autorisé.', 403);
+      // Requête relayée en HTTPS par le reverse proxy du NAS (adresse locale) : son nom
+      // public est accepté même si ORBITE_PUBLIC_URL n'est pas encore renseignée.
+      const viaLocalProxy =
+        String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https' &&
+        isPrivateAddress(req.socket.remoteAddress);
+      if (!hostAllowed(host) && !viaLocalProxy) throw new HttpError('Hôte non autorisé.', 403);
       if (req.headers.origin) {
         let originHost = '';
         try {
