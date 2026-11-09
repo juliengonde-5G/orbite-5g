@@ -447,7 +447,9 @@ test('installation à distance avec le code du journal, à usage unique', async 
     const code = new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode ?? '';
     assert.equal(code.length, 8);
     const formatted = code.slice(0, 4).toLowerCase() + '-' + code.slice(4);
-    let s = await phone.post('/api/setup', { memberId: admin.id, pin: '482916', code: formatted }, internet);
+    // Appareil inconnu hors de la maison : prénoms masqués, installation par le prénom.
+    assert.deepEqual((await phone.get('/api/session', internet)).body.members, []);
+    let s = await phone.post('/api/setup', { name: 'julien', pin: '482916', code: formatted }, internet);
     assert.equal(s.status, 200);
     assert.equal(s.body.me.admin, true);
     assert.equal(new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode, undefined);

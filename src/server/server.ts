@@ -378,7 +378,7 @@ export function createApp(options: AppOptions): http.Server {
             'Code d’installation incorrect. Il figure dans le journal du conteneur « orbite » (Container Manager).',
             403,
           );
-        const token = family.claimAdmin(ctx.data.memberId, ctx.data.pin);
+        const token = family.claimAdmin(findMember(ctx.data).id, ctx.data.pin);
         delete secretDoc.setupCode;
         vault.save('secret', secretDoc);
         setCookies(ctx, token);

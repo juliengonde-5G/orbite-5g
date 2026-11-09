@@ -216,7 +216,15 @@ function activation(ctx: LockContext, who: Who, name: string, color: string | un
 }
 
 /** Installation hors de la maison : code affiché dans le journal du conteneur, puis PIN. */
-function setupCode(ctx: LockContext, m: Member): void {
+function setupCode(ctx: LockContext, m: Member | null): void {
+  const nameInput = m
+    ? null
+    : h('input.text-input', {
+        type: 'text',
+        autocomplete: 'given-name',
+        placeholder: 'Ton prénom',
+        'aria-label': 'Ton prénom',
+      });
   const input = h('input.code-input', {
     type: 'text',
     autocomplete: 'off',
@@ -239,19 +247,25 @@ function setupCode(ctx: LockContext, m: Member): void {
     h(
       'form.activation',
       {
-        style: { '--accent': `var(--c-${m.color})` },
+        style: m ? { '--accent': `var(--c-${m.color})` } : {},
         onsubmit: (e: Event) => {
           e.preventDefault();
           const code = input.value;
+          const name = m ? m.name : (nameInput?.value.trim() ?? '');
+          if (!name) {
+            error.textContent = 'Indique ton prénom.';
+            return;
+          }
           if (code.replace('-', '').length !== 8) {
             error.textContent = 'Le code fait 8 caractères.';
             return;
           }
+          const who = m ? { memberId: m.id } : { name };
           choosePin(
             ctx,
-            `Choisis ton code, ${m.name}`,
-            m.color,
-            (pin) => api.setup(m.id, pin, code),
+            `Choisis ton code, ${name}`,
+            m?.color,
+            (pin) => api.setup(who, pin, code),
             () => pick(ctx),
           );
         },
@@ -263,6 +277,7 @@ function setupCode(ctx: LockContext, m: Member): void {
       ),
       h('h1.pin-title', 'Installation'),
       h('p.lock-text', 'Entre le code d’installation affiché dans le journal du conteneur « orbite » sur le Synology.'),
+      nameInput,
       input,
       error,
       h('button.button.button-primary', { type: 'submit' }, 'Continuer'),
@@ -293,7 +308,7 @@ function openMember(ctx: LockContext, m: Member): void {
       ctx,
       `Choisis ton code, ${m.name}`,
       m.color,
-      (pin) => api.setup(m.id, pin),
+      (pin) => api.setup({ memberId: m.id }, pin),
       () => pick(ctx),
     );
   } else activation(ctx, who, m.name, m.color);
@@ -357,7 +372,8 @@ function byName(ctx: LockContext): void {
 function pick(ctx: LockContext): void {
   const { members, setupNeeded } = ctx.session;
   if (!members.length) {
-    byName(ctx);
+    if (ctx.session.setupNeeded) setupCode(ctx, null);
+    else byName(ctx);
     return;
   }
   const ordered = [...members].sort((a, b) => Number(b.role === 'parent') - Number(a.role === 'parent'));
