@@ -2092,6 +2092,53 @@ button {
   }
 }
 
+// Diagnostic des compétences (Réglages, parents).
+.diag-list {
+  display: grid;
+  gap: 8px;
+}
+.diag {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.diag-name {
+  font-weight: 700;
+  small {
+    margin-left: 8px;
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+}
+.diag-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 0.86rem;
+  color: var(--ink-2);
+}
+.diag-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.diag-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ink-3);
+}
+.diag-line {
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+.diag-warn {
+  color: var(--mid);
+  font-weight: 700;
+}
+
 // ---------- Feuilles ----------
 
 .sheet {

@@ -157,8 +157,8 @@ function student(id: string, name: string, className: string, level: number, dri
       skills:
         rand() < 0.6
           ? [
-              { name: 'Raisonner', detail: '', level: (1 + Math.floor(rand() * 4)) as 1 | 2 | 3 | 4 },
-              { name: 'Communiquer', detail: '', level: (1 + Math.floor(rand() * 4)) as 1 | 2 | 3 | 4 },
+              { name: 'Raisonner', detail: '', level: (1 + Math.floor(rand() * 4)) as 1 | 2 | 3 | 4, elemId: '101' },
+              { name: 'Communiquer', detail: '', level: (1 + Math.floor(rand() * 4)) as 1 | 2 | 3 | 4, elemId: '102' },
             ]
           : [],
     });
@@ -171,6 +171,12 @@ function student(id: string, name: string, className: string, level: number, dri
     school: 'Collège des Tilleuls',
     photo: null,
     notes,
+    skillScale: [
+      { level: 1, label: 'Maîtrise insuffisante', color: '#e8456b' },
+      { level: 2, label: 'Maîtrise fragile', color: '#e69500' },
+      { level: 3, label: 'Maîtrise satisfaisante', color: '#0a9b9a' },
+      { level: 4, label: 'Très bonne maîtrise', color: '#1a9f63' },
+    ],
     periods: [
       { id: 'A001', label: 'Trimestre 1', start: day(-70), end: day(-61), average: null, classAverage: null },
       { id: 'A002', label: 'Trimestre 2', start: day(-60), end: day(30), average: null, classAverage: null },

@@ -83,7 +83,7 @@ test('compétences évaluées lues avec leur niveau', () => {
     ]),
     [
       { name: 'Raisonner', detail: 'Démontrer', level: 3 },
-      { name: 'Communiquer', detail: '', level: null },
+      { name: 'Communiquer', detail: '', level: null, raw: 'Abs' },
     ],
   );
 });

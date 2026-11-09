@@ -579,6 +579,60 @@ function familyBlock(actions: SettingsActions): HTMLElement {
 
 /* ---------- Écran ---------- */
 
+/**
+ * Diagnostic des compétences reçues d'ÉcoleDirecte (parents) : échelle de
+ * l'établissement, part des évaluations identifiées, valeurs non reconnues.
+ * Sert à vérifier les données avant le soutien scolaire.
+ */
+function competenceBlock(): HTMLElement | null {
+  const children = state.data?.children ?? [];
+  if (!children.length) return null;
+  return h(
+    'section.block',
+    h('header.section-head', h('h2', 'Compétences ÉcoleDirecte')),
+    h('p.hint', 'Ce que le collège transmet sur les compétences, pour préparer le soutien scolaire.'),
+    h(
+      'ul.diag-list',
+      children.map((c) => {
+        const all = c.notes.flatMap((n) => n.skills ?? []);
+        const leveled = all.filter((s) => s.level !== null);
+        const withId = all.filter((s) => s.elemId).length;
+        const distinct = new Set(all.map((s) => s.elemId ?? s.name)).size;
+        const unknown = new Map<string, number>();
+        for (const s of all) if (s.level === null && s.raw) unknown.set(s.raw, (unknown.get(s.raw) ?? 0) + 1);
+        return h(
+          'li.diag',
+          h('p.diag-name', c.name, c.className && h('small', c.className)),
+          c.skillScale?.length
+            ? h(
+                'p.diag-scale',
+                c.skillScale.map((l) =>
+                  h(
+                    'span.diag-level',
+                    h('span.diag-swatch', { style: l.color ? { background: l.color } : {} }),
+                    `${l.level}. ${l.label}`,
+                  ),
+                ),
+              )
+            : h('p.hint', 'Échelle non fournie : niveaux 1 à 4 de « insuffisant » à « très bon ».'),
+          h(
+            'p.diag-line',
+            all.length === 0
+              ? 'Aucune compétence évaluée pour le moment.'
+              : `${leveled.length} évaluation${leveled.length > 1 ? 's' : ''} de compétences, ${distinct} compétence${distinct > 1 ? 's' : ''} différente${distinct > 1 ? 's' : ''}, ${Math.round((withId / all.length) * 100)} % avec identifiant ÉcoleDirecte.`,
+          ),
+          unknown.size > 0 &&
+            h(
+              'p.diag-line.diag-warn',
+              'Valeurs non reconnues, comptées comme « non positionné » : ',
+              [...unknown].map(([v, n]) => `« ${v} » (${n})`).join(', '),
+            ),
+        );
+      }),
+    ),
+  );
+}
+
 function installHint(): HTMLElement | null {
   const standalone =
     matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone;
@@ -651,6 +705,7 @@ export function meView(actions: SettingsActions): HTMLElement {
       ),
     ),
     me.role === 'parent' && edCard(actions),
+    me.role === 'parent' && competenceBlock(),
     me.role === 'parent' && me.admin && familyBlock(actions),
     installHint(),
     h(
