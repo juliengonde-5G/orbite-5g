@@ -252,3 +252,46 @@ test('notifications : rappel et récap retentés après une panne, envoyés une 
     rmSync(t.dir, { recursive: true, force: true });
   }
 });
+
+test('notifications : file d’envoi — échec retenté sans doublon, heures calmes, longues listes', async () => {
+  const now = { value: new Date('2026-11-04T15:00:00Z') };
+  const t = setup(now);
+  try {
+    await t.notifier.scan();
+    // Service push en panne pendant le passage : la nouveauté reste en file.
+    t.data.notes['1:21']?.push(note('e', 'SVT', '2026-11-04'));
+    t.data.pushDown = true;
+    await t.notifier.scan();
+    assert.equal(t.sent.length, 0);
+    t.data.pushDown = false;
+    await t.notifier.flush();
+    await t.notifier.flush();
+    assert.equal(to(t.sent, 2).filter((m) => m.title === 'Nouvelle note').length, 1, 'retentée, une seule fois');
+    assert.equal(to(t.sent, 1).filter((m) => m.title === 'Léo · Nouvelle note').length, 1);
+
+    // Partage à 23 h : rien avant 7 h, puis envoyé au premier passage du matin.
+    t.sent.length = 0;
+    now.value = new Date('2026-11-04T22:00:00Z');
+    await t.notifier.shared(['1:21'], 'Réunion parents');
+    await t.notifier.tick();
+    assert.equal(t.sent.length, 0, 'heures calmes respectées');
+    now.value = new Date('2026-11-05T06:05:00Z');
+    await t.notifier.tick();
+    assert.deepEqual(
+      to(t.sent, 2).map((m) => m.title),
+      ['Un parent t’a partagé un message'],
+    );
+
+    // Plus de 600 notes inchangées : rien n'est réannoncé.
+    t.sent.length = 0;
+    const many = Array.from({ length: 650 }, (_, i) => note(`n${i}`, 'MATHS', '2026-11-03'));
+    t.data.notes['1:22'] = many;
+    await t.notifier.scan();
+    t.sent.length = 0;
+    await t.notifier.scan();
+    await t.notifier.scan();
+    assert.equal(t.sent.length, 0, 'aucune note déjà vue réannoncée');
+  } finally {
+    rmSync(t.dir, { recursive: true, force: true });
+  }
+});
