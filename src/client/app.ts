@@ -12,6 +12,7 @@ import { renderLock } from './lock.ts';
 import { resetData, state, type Route } from './state.ts';
 import { bagKey, bagView, kitSheet } from './bag-view.ts';
 import { meView, sheet } from './settings.ts';
+import { resetNotifications } from './push-view.ts';
 import { parisHour } from '../shared/metrics.ts';
 import { childColor, familyHome, gradesView, studentHome, tasksView, type Actions } from './views.ts';
 import { lifeView } from './life-view.ts';
@@ -586,6 +587,7 @@ async function logout(): Promise<void> {
 function unlocked(session: SessionInfo): void {
   state.session = session;
   resetData();
+  resetNotifications();
   applyPrefs();
   clear(root);
   state.route = routeFromHash();

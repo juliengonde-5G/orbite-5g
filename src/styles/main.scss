@@ -3149,3 +3149,31 @@ button {
     animation: none;
   }
 }
+
+/* ---------- Notifications ---------- */
+.notify-main {
+  display: grid;
+  gap: 10px;
+}
+.notify-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ink-3);
+  }
+}
+.notify-main.is-on .dot {
+  background: var(--good);
+}
+.notify-prefs {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  .toggle + .toggle {
+    border-top: 1px solid var(--line);
+  }
+}

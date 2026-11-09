@@ -7,6 +7,7 @@ import { clear, h, icon, tap } from './dom.ts';
 import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
 import { sky } from './views.ts';
+import { notificationsCard } from './push-view.ts';
 import type { AuthResult, ClaudeKeyStatus, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
 export interface SettingsActions {
@@ -833,6 +834,7 @@ export function meView(actions: SettingsActions): HTMLElement {
         (reading) => void setPrefs({ reading }),
       ),
     ),
+    notificationsCard(() => actions.rerender()),
     me.role === 'parent' && edCard(actions),
     me.role === 'parent' && me.admin && claudeCard(actions),
     me.role === 'parent' && competenceBlock(),

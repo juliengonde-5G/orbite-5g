@@ -31,6 +31,7 @@ import { EdService, type EdClient } from './ed-service.ts';
 import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd } from './demo.ts';
+import { Notifier } from './notifier.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
   BagDay,
@@ -158,6 +159,8 @@ export interface AppOptions {
   background?: boolean;
   /** Âge minimal du cache ÉcoleDirecte en ms (60 s par défaut ; réduit dans les tests). */
   refreshFloor?: number;
+  /** Notificateur imposé (tests). */
+  notifier?: Notifier;
 }
 
 interface SeenDoc {
@@ -297,6 +300,19 @@ export function createApp(options: AppOptions): http.Server {
       `Code d’installation (parent administrateur) : ${secretDoc.setupCode.slice(0, 4)}-${secretDoc.setupCode.slice(4)}`,
     );
   const background = options.background ? ed.startBackground() : undefined;
+  const pushSubject = (() => {
+    const contact = (process.env.ORBITE_PUSH_CONTACT || '').trim();
+    if (/^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) return contact;
+    try {
+      const url = options.publicUrl ? new URL(options.publicUrl) : null;
+      if (url?.protocol === 'https:') return url.origin;
+    } catch {
+      // adresse publique invalide : contact par défaut
+    }
+    return 'mailto:orbite@example.com';
+  })();
+  const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject });
+  const pushTimer = options.background ? notifier.start() : undefined;
   const loginAttempts: number[] = [];
 
   // Appareil déjà utilisé par la famille : cookie signé, sans valeur secrète, qui
@@ -565,6 +581,8 @@ export function createApp(options: AppOptions): http.Server {
     [
       'POST /api/logout',
       async (ctx) => {
+        // L'appareil verrouillé ne reçoit plus les notifications de ce profil.
+        if (ctx.me) notifier.unsubscribe(ctx.me, family.deviceTag(ctx.token));
         family.logout(ctx.token);
         setCookies(ctx, null);
         ctx.me = undefined;
@@ -794,9 +812,15 @@ export function createApp(options: AppOptions): http.Server {
         await listedMail(ref);
         const known = new Set(dashboard.children.map((c) => c.id));
         const ids = [...new Set(input as string[])].filter((id) => known.has(id));
+        const before = new Set(mail.shares[ref.key] ?? []);
         if (ids.length) mail.shares[ref.key] = ids;
         else delete mail.shares[ref.key];
         vault.save('mail', mail);
+        const added = ids.filter((id) => !before.has(id));
+        if (added.length) {
+          const found = await listedMail(ref).catch(() => null);
+          void notifier.shared(added, found?.subject || 'Nouveau message').catch(() => undefined);
+        }
         return { sharedWith: ids };
       },
     ],
@@ -822,6 +846,47 @@ export function createApp(options: AppOptions): http.Server {
         } catch (e) {
           throw new HttpError((e as Error).message || 'Conseil indisponible.', 503);
         }
+      },
+    ],
+    ['GET /api/push', async (ctx) => notifier.status(requireMember(ctx), family.deviceTag(ctx.token))],
+    [
+      'POST /api/push/subscribe',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const tag = family.deviceTag(ctx.token);
+        if (!notifier.subscribe(me, tag, ctx.data.subscription))
+          throw new HttpError('Abonnement refusé : ce navigateur n’est pas reconnu.', 400);
+        return notifier.status(me, tag);
+      },
+    ],
+    [
+      'POST /api/push/unsubscribe',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const tag = family.deviceTag(ctx.token);
+        notifier.unsubscribe(me, tag);
+        return notifier.status(me, tag);
+      },
+    ],
+    [
+      'POST /api/push/prefs',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        notifier.setPrefs(me, ctx.data.prefs);
+        return notifier.status(me, family.deviceTag(ctx.token));
+      },
+    ],
+    [
+      'POST /api/push/test',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const sent = await notifier.notify(
+          [me],
+          { title: 'Orbite', body: 'Les notifications fonctionnent sur cet appareil.', url: '/#moi', tag: 'test' },
+          null,
+        );
+        if (!sent) throw new HttpError('Aucun appareil n’a reçu la notification. Réactive-les sur cet appareil.', 503);
+        return { sent };
       },
     ],
     [
@@ -910,6 +975,7 @@ export function createApp(options: AppOptions): http.Server {
         const me = requireAdmin(ctx);
         if (ctx.data.memberId === me.id) throw new HttpError('Tu ne peux pas supprimer ton propre profil.', 400);
         family.remove(ctx.data.memberId);
+        if (typeof ctx.data.memberId === 'string') notifier.forget(ctx.data.memberId);
         return { ok: true };
       },
     ],
@@ -1062,6 +1128,7 @@ export function createApp(options: AppOptions): http.Server {
 
   server.on('close', () => {
     if (background) clearInterval(background);
+    if (pushTimer) clearInterval(pushTimer);
   });
   return server;
 }

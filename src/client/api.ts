@@ -14,6 +14,8 @@ import type {
   MailDetail,
   MailList,
   MemberView,
+  PushPrefs,
+  PushStatus,
   SchoolLife,
   Prefs,
   SessionInfo,
@@ -78,6 +80,13 @@ export const api = {
   share: (key: string, childIds: string[]) =>
     call<{ sharedWith: string[] }>('POST', '/api/message/share', { key, childIds }),
   schoolLife: (childId: string, refresh = false) => call<SchoolLife>('POST', '/api/schoollife', { childId, refresh }),
+  push: {
+    status: () => call<PushStatus>('GET', '/api/push'),
+    subscribe: (subscription: unknown) => call<PushStatus>('POST', '/api/push/subscribe', { subscription }),
+    unsubscribe: () => call<PushStatus>('POST', '/api/push/unsubscribe'),
+    prefs: (prefs: Partial<PushPrefs>) => call<PushStatus>('POST', '/api/push/prefs', { prefs }),
+    test: () => call<{ sent: number }>('POST', '/api/push/test'),
+  },
   admin: {
     members: () => call<{ members: MemberView[]; ed: EdStatus }>('GET', '/api/admin/members'),
     connect: (username: string, password: string, remember: boolean) =>

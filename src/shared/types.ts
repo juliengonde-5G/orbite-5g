@@ -397,3 +397,24 @@ export interface ClaudeKeyStatus {
   /** Dernière vérification auprès d'Anthropic. */
   check: 'ok' | 'refused' | 'unreachable' | null;
 }
+
+/** Ce qu'un membre veut recevoir en notification (réglé appareil par appareil côté serveur). */
+export interface PushPrefs {
+  notes: boolean;
+  mail: boolean;
+  life: boolean;
+  /** Rappel du cartable à 19 h (élèves). */
+  bag: boolean;
+  /** Récapitulatif du dimanche soir (parents). */
+  recap: boolean;
+}
+
+export interface PushStatus {
+  /** Clé publique VAPID (base64url) pour `pushManager.subscribe`. */
+  publicKey: string;
+  /** Cet appareil est abonné. */
+  subscribed: boolean;
+  /** Nombre d'appareils abonnés pour ce profil. */
+  devices: number;
+  prefs: PushPrefs;
+}
