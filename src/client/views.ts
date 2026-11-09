@@ -19,7 +19,7 @@ import {
 } from './format.ts';
 import { orbit } from './orbit.ts';
 import { progressChart } from './chart.ts';
-import { bagCard } from './bag-view.ts';
+import { bagKey } from './bag-view.ts';
 import { familyLifeBlock, lifeCard, lifeFacts } from './life-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
 import { state } from './state.ts';
@@ -265,6 +265,9 @@ function homeworkBlock(child: Child, actions: Actions, mode: 'focus' | 'all'): H
         focus === today ? 'Pour aujourd’hui' : `Pour ${relativeDay(focus).toLowerCase()}`,
         soon.length > 0 && h('span.counter', left === 0 ? 'Tout est fait' : `${left} à faire`),
       ),
+      soon.length > 0 &&
+        left === 0 &&
+        h('p.all-done', { role: 'status' }, icon('star', 20), h('span', 'Tout est fait. Bien joué !')),
       soon.length
         ? h(
             'ul.task-list',
@@ -352,6 +355,55 @@ function recentNotes(child: Child, limit: number): Note[] {
     .slice(0, limit);
 }
 
+/**
+ * Raccourcis du jour, dans le ciel à côté de l'orbite : ce qu'il reste à faire,
+ * le cartable, les messages. Un coup de pouce suffit pour y aller.
+ */
+function pulse(child: Child, actions: Actions, asParent: boolean): HTMLElement {
+  const focus = dueFocus();
+  const hw = state.homework.get(child.id);
+  const checks = new Set(state.data?.checks[child.id] ?? []);
+  const left = hw?.loaded ? hw.items.filter((t) => t.dueDate <= focus && !checks.has(t.id)).length : null;
+  const bag = state.bags.get(bagKey(child.id, null));
+  if (!bag) actions.loadBag(child.id, null);
+  const day = bag?.day;
+  const total = day?.items.length ?? 0;
+  const packed = day ? day.items.filter((i) => day.packed.includes(i.id)).length : 0;
+  const unread = state.mail.get(child.id)?.value?.unread ?? 0;
+  const tile = (route: string, ico: string, value: string | null, label: string, done: boolean, alert = false) =>
+    h(
+      `button.pulse${done ? '.is-done' : ''}${alert ? '.is-alert' : ''}`,
+      {
+        type: 'button',
+        onclick: () => {
+          tap();
+          actions.go(route, child.id);
+        },
+      },
+      h('span.pulse-icon', icon(done ? 'check' : ico, 20)),
+      h('span.pulse-text', h('b', value ?? '…'), h('small', label)),
+    );
+  return h(
+    'div.pulses',
+    tile(
+      'tasks',
+      'tasks',
+      left === null ? null : left === 0 ? 'Fait' : String(left),
+      left === 0 ? 'devoirs' : `devoir${(left ?? 2) > 1 ? 's' : ''} à faire`,
+      left === 0,
+    ),
+    tile(
+      'bag',
+      'bag',
+      !day ? null : total === 0 ? '–' : packed === total ? 'Prêt' : `${packed}/${total}`,
+      'cartable',
+      total > 0 && packed === total,
+    ),
+    !asParent &&
+      tile('messages', 'mail', String(unread), unread > 1 ? 'nouveaux messages' : 'nouveau message', false, unread > 0),
+  );
+}
+
 export function studentHome(child: Child, actions: Actions, asParent: boolean): HTMLElement {
   const me = state.session?.me;
   const freshCount = child.notes.filter((n) => state.fresh.has(noteKey(child.id, n))).length;
@@ -371,10 +423,9 @@ export function studentHome(child: Child, actions: Actions, asParent: boolean): 
             initial(me.name),
           ),
       ],
-      extra: [h('div.hero', orbit(child, { fresh: state.fresh }))],
+      extra: [h('div.hero-row', h('div.hero', orbit(child, { fresh: state.fresh })), pulse(child, actions, asParent))],
       big: true,
     }),
-    h('div.lift', bagCard(child, actions)),
     child.error && h('p.inline-error', child.error),
     h(
       'div.flow',
