@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.github
+.orbite-data
+.orbite-demo
+.env
+*.log
+coverage
+docs
+test

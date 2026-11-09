@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.orbite-data/
+package-lock.json
+public/index.html
+README.md

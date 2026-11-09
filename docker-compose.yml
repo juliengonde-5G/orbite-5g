@@ -1,0 +1,20 @@
+# Projet « orbite » pour Container Manager (Synology DSM 7.2).
+# Les valeurs propres à la famille se règlent ici, sur le NAS : elles ne sont pas dans le dépôt.
+services:
+  orbite:
+    image: ghcr.io/juliengonde-5g/orbite-5g:latest
+    container_name: orbite
+    restart: unless-stopped
+    ports:
+      - '3210:3210'
+    volumes:
+      # Coffre chiffré (profils, connexion ÉcoleDirecte, cache) : à inclure dans Hyper Backup.
+      - /volume1/docker/orbite/data:/data
+    environment:
+      # Profils créés au premier démarrage : « Prénom:rôle[:classe] ».
+      ORBITE_FAMILY: 'Parent:parent+admin, Enfant:enfant:6e'
+      # Adresse publique HTTPS (reverse proxy DSM), pour les cookies sécurisés.
+      ORBITE_PUBLIC_URL: ''
+      # Conseils IA facultatifs (Claude) : clé API Anthropic, à coller uniquement ici.
+      ANTHROPIC_API_KEY: ''
+      TZ: Europe/Paris

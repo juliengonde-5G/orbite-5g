@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F3F5FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0D1026" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Orbite" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Orbite</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/atkinson-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/client/app.js"></script>
+  </head>
+  <body>
+    <div id="app" aria-live="polite">
+      <div class="boot" role="status">
+        <img src="/favicon.svg" alt="" width="56" height="56" />
+        <span class="sr-only">Chargement d’Orbite</span>
+      </div>
+    </div>
+    <noscript>Orbite a besoin de JavaScript.</noscript>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Vérification avant chaque commit : types, lint, formatage et tests (npm run check).
+# Activé par `npm install` (script `prepare` : git config core.hooksPath .githooks).
+# Contournement ponctuel : git commit --no-verify.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+# Les clients Git graphiques n'ouvrent pas de shell interactif : charger nvm pour
+# utiliser la version de .nvmrc plutôt que le Node du système.
+for nvm_script in "${NVM_DIR:-$HOME/.nvm}/nvm.sh" /opt/homebrew/opt/nvm/nvm.sh; do
+  if [ -s "$nvm_script" ]; then
+    . "$nvm_script" && nvm use >/dev/null
+    break
+  fi
+done
+exec npm run check

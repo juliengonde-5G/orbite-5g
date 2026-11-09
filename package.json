@@ -1,0 +1,38 @@
+{
+  "name": "orbite-5g",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Orbite pour la famille : notes, devoirs et progrès ÉcoleDirecte sur le NAS, appli mobile installable",
+  "author": "Julien Gondé (d’après Orbite de Thomas Fauré)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "clean": "node -e \"process.getBuiltinModule('node:fs').rmSync('dist', {recursive: true, force: true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:styles",
+    "build:styles": "sass --no-source-map --style=compressed src/styles/main.scss dist/style.css",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "prestart": "npm run build",
+    "start": "node dist/server/server.js",
+    "predev": "npm run build",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput & npm run build:styles -- --watch & ORBITE_DEMO=1 ORBITE_DATA_DIR=.orbite-demo node --watch dist/server/server.js",
+    "pretest": "npm run build",
+    "test": "node --test 'test/**/*.test.ts'",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage --test-coverage-include='src/**' 'test/**/*.test.ts'",
+    "lint": "biome lint",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "demo": "npm run build && ORBITE_DEMO=1 ORBITE_DATA_DIR=.orbite-demo node dist/server/server.js"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@types/node": "24.19.2",
+    "prettier": "3.9.10",
+    "sass": "1.108.1",
+    "typescript": "7.0.2"
+  }
+}
