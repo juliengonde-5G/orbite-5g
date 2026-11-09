@@ -51,6 +51,7 @@ import type {
   SchoolLife,
   Skill,
   SkillLevel,
+  SubjectAverage,
 } from '../shared/types.ts';
 
 /** Message tel que lu sur ÉcoleDirecte, avant les droits et repères propres à Orbite. */
@@ -123,6 +124,13 @@ interface RawDiscipline {
   discipline?: string;
   libelleMatiere?: string;
   sousMatiere?: boolean;
+  groupeMatiere?: boolean;
+  moyenne?: unknown;
+  moyenneClasse?: unknown;
+  moyenneMin?: unknown;
+  moyenneMax?: unknown;
+  coef?: unknown;
+  professeurs?: { nom?: string }[];
 }
 
 interface RawPeriod {
@@ -132,7 +140,10 @@ interface RawPeriod {
   annuel?: boolean;
   dateDebut?: string;
   dateFin?: string;
+  dateConseil?: string;
+  heureConseil?: string;
   ensembleMatieres?: {
+    nomPP?: string;
     moyenneGenerale?: unknown;
     moyenneClasse?: unknown;
     disciplines?: RawDiscipline[];
@@ -155,6 +166,7 @@ interface RawNote {
   moyenneClasse?: unknown;
   enLettre?: boolean;
   nonSignificatif?: boolean;
+  commentaire?: unknown;
   elementsProgramme?: RawSkill[];
 }
 
@@ -1020,6 +1032,46 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
   };
 }
 
+/** Texte libre ÉcoleDirecte (parfois en HTML) réduit à une ligne propre. */
+function cleanText(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  return htmlText(value).replace(/\s+/g, ' ').trim().slice(0, 600);
+}
+
+/**
+ * Conseil de classe, professeur principal et moyennes officielles par matière.
+ * Le rang n'est jamais repris : Orbite ne compare pas les élèves entre eux.
+ */
+function periodExtras(p: RawPeriod, settings: NonNullable<RawNotesData['parametrage']>): Partial<Period> {
+  const extras: Partial<Period> = {};
+  const date = String(p.dateConseil || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    extras.councilDate = date;
+    const time = String(p.heureConseil || '').trim();
+    if (/^\d{1,2}:\d{2}$/.test(time)) extras.councilTime = time.padStart(5, '0');
+  }
+  const pp = String(p.ensembleMatieres?.nomPP || '').trim();
+  if (pp) extras.mainTeacher = pp;
+  if (settings.affichageMoyenne === false) return extras;
+  const hideClass = settings.moyenneClasse === false;
+  const subjects: SubjectAverage[] = records<RawDiscipline>(p.ensembleMatieres?.disciplines)
+    .filter((d) => !d.groupeMatiere && (d.codeMatiere || d.discipline))
+    .map((d) => ({
+      id: `${d.codeMatiere || d.discipline}:${d.codeSousMatiere || ''}`,
+      label: String(d.discipline || d.libelleMatiere || d.codeMatiere || '').trim(),
+      average: number(d.moyenne),
+      classAverage: hideClass ? null : number(d.moyenneClasse),
+      min: hideClass ? null : number(d.moyenneMin),
+      max: hideClass ? null : number(d.moyenneMax),
+      coefficient: number(d.coef),
+      teachers: records<{ nom?: string }>(d.professeurs)
+        .map((t) => String(t.nom || '').trim())
+        .filter(Boolean),
+    }));
+  if (subjects.length) extras.subjects = subjects;
+  return extras;
+}
+
 /**
  * Convertit la réponse `notes.awp` au format partagé. Les réglages `parametrage`
  * de l'établissement sont respectés : une moyenne ou une note masquée sur
@@ -1051,6 +1103,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): {
           ? null
           : number(p.ensembleMatieres?.moyenneGenerale),
       classAverage: settings.moyenneClasse === false ? null : number(p.ensembleMatieres?.moyenneClasse),
+      ...periodExtras(p, settings),
     })),
     notes:
       settings.affichageNote === false
@@ -1072,6 +1125,7 @@ export function normalizeNotes(data: RawNotesData | null = {}): {
                 : number(n.moyenneClasse),
             // Notes non significatives ou en lettres : affichées mais hors moyenne.
             excluded: !!n.nonSignificatif || !!n.enLettre,
+            ...(cleanText(n.commentaire) ? { comment: cleanText(n.commentaire) } : {}),
             skills: skills(n.elementsProgramme),
           })),
   };

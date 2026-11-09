@@ -50,6 +50,8 @@ export interface Note extends Gradable {
   raw: string;
   classAverage: number | null;
   excluded: boolean;
+  /** Appréciation du professeur sur ce devoir, quand ÉcoleDirecte la fournit. */
+  comment?: string;
   /** Compétences évaluées avec cette note (souvent vides au lycée). */
   skills?: Skill[];
 }
@@ -84,6 +86,25 @@ export interface Period {
   end?: string | undefined;
   average: number | null;
   classAverage: number | null;
+  /** Date (AAAA-MM-JJ) et heure du conseil de classe, si l'établissement la publie. */
+  councilDate?: string;
+  councilTime?: string;
+  /** Professeur principal. */
+  mainTeacher?: string;
+  /** Moyennes officielles calculées par l'établissement, matière par matière (sans rang). */
+  subjects?: SubjectAverage[];
+}
+
+export interface SubjectAverage {
+  /** Même clé que `Note.subjectId` : `codeMatière:codeSousMatière`. */
+  id: string;
+  label: string;
+  average: number | null;
+  classAverage: number | null;
+  min: number | null;
+  max: number | null;
+  coefficient: number | null;
+  teachers: string[];
 }
 
 /** Les devoirs faits ne sont jamais renvoyés ; `unknown` quand ÉcoleDirecte ne précise pas l'état. */
