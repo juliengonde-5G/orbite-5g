@@ -59,7 +59,7 @@ export interface EdClient {
   timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
   lessonsForChild(childId: string, date: string): Promise<Lesson[]>;
   documents(): Promise<EdDocument[]>;
-  documentFile(id: string): Promise<EdFile>;
+  documentFile(id: string, fileType: string): Promise<EdFile>;
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   mailbox(childId: string | null): Promise<EdMail[]>;
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
@@ -399,8 +399,8 @@ export class EdService {
     });
   }
 
-  documentFile(id: string): Promise<EdFile> {
-    return this.serial(() => this.call((c) => c.documentFile(id)));
+  documentFile(id: string, fileType: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.documentFile(id, fileType)));
   }
 
   /** Contenu des séances d'un jour passé (cache 30 min). */

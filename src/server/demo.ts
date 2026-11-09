@@ -382,9 +382,10 @@ export class DemoEd implements EdClient {
         date: day(-55),
         kind: 'bulletin' as const,
         childId,
+        fileType: 'Note',
       })),
-      { id: '910', name: 'Certificat de scolarité', date: day(-62), kind: 'admin', childId: '1:21' },
-      { id: '911', name: 'Règlement intérieur', date: day(-66), kind: 'admin', childId: null },
+      { id: '910', name: 'Certificat de scolarité', date: day(-62), kind: 'admin', childId: '1:21', fileType: '' },
+      { id: '911', name: 'Règlement intérieur', date: day(-66), kind: 'admin', childId: null, fileType: '' },
     ];
   }
   async documentFile(): Promise<EdFile> {

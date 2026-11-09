@@ -142,23 +142,23 @@ test('documents : rubriques aplaties, élève rattaché, identifiants invalides 
   const students = new Map([['11', '1:11']]);
   const docs = normalizeDocuments(
     {
-      notes: [{ id: 5, libelle: 'Bulletin T1', date: '2026-01-20', idEleve: 11 }],
+      notes: [{ id: 5, libelle: 'Bulletin T1', date: '2026-01-20', idEleve: 11, type: 'Note' }],
       administratifs: [
         { id: '6', libelle: 'Certificat', date: '2025-09-02 10:00', idEleve: 99 },
         { id: '../x', libelle: 'Piège' },
         null,
       ],
-      factures: [{ id: 7, libelle: '', date: 'n/a' }],
+      factures: [{ id: 7, libelle: '', date: 'n/a', type: '../../x' }],
       inconnu: [{ id: 8 }],
     },
     students,
   );
   assert.deepEqual(
-    docs.map((d) => [d.id, d.kind, d.childId, d.date]),
+    docs.map((d) => [d.id, d.kind, d.childId, d.date, d.fileType]),
     [
-      ['5', 'bulletin', '1:11', '2026-01-20'],
-      ['6', 'admin', null, '2025-09-02'],
-      ['7', 'facture', null, ''],
+      ['5', 'bulletin', '1:11', '2026-01-20', 'Note'],
+      ['6', 'admin', null, '2025-09-02', ''],
+      ['7', 'facture', null, '', 'Facture'],
     ],
   );
   assert.equal(docs[2]?.name, 'Document');

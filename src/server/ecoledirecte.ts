@@ -77,6 +77,8 @@ export interface EdDocument {
   date: string;
   kind: DocKind;
   childId: string | null;
+  /** Valeur `leTypeDeFichier` attendue au téléchargement (serveur seulement). */
+  fileType: string;
 }
 
 export interface EdFile {
@@ -150,6 +152,7 @@ interface RawPeriod {
   annuel?: boolean;
   dateDebut?: string;
   dateFin?: string;
+  cloture?: boolean;
   dateConseil?: string;
   heureConseil?: string;
   ensembleMatieres?: {
@@ -195,6 +198,11 @@ export interface RawNotesData {
     affichageMoyenne?: boolean;
     moyenneGenerale?: boolean;
     moyenneClasse?: boolean;
+    moyenneEleve?: boolean;
+    moyenneMin?: boolean;
+    moyenneMax?: boolean;
+    moyenneCoefMatiere?: boolean;
+    moyenneUniquementPeriodeCloture?: boolean;
     affichageNote?: boolean;
     affichageMoyenneDevoir?: boolean;
     coefficientNote?: boolean;
@@ -794,6 +802,7 @@ export class EcoleDirecte {
         for (const s of account.typeCompte === 'E' ? [account] : records<RawStudent>(account.profile?.eleves))
           students.set(String(s.id), `${account.id}:${s.id}`);
       let last: unknown;
+      // Compte famille d'abord ; `elevesDocuments` pour un compte élève (documenté, non vérifié en famille).
       for (const path of ['familledocuments.awp?archive=&verbe=get', 'elevesDocuments.awp?archive=&verbe=get']) {
         try {
           const body = await this.request<unknown>(path, {});
@@ -808,16 +817,13 @@ export class EcoleDirecte {
     });
   }
 
-  /** Télécharge un document de `documents()` (type de fichier non documenté : deux variantes essayées). */
-  async documentFile(id: string): Promise<EdFile> {
+  /** Télécharge un document de `documents()` ; `fileType` est le champ `type` de la liste (« Note », « Facture »…). */
+  async documentFile(id: string, fileType: string): Promise<EdFile> {
     if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
-    if (!/^\d{1,12}$/.test(id)) throw new EdError('Document introuvable.', 404);
-    try {
-      return await this.download(`telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=NODEVOIR`);
-    } catch (e) {
-      if ((e as EdError).status !== 404) throw e;
-      return this.download(`telechargement.awp?verbe=get&fichierId=${id}`);
-    }
+    if (!/^\d{1,12}$/.test(id) || !/^\w{0,40}$/.test(fileType)) throw new EdError('Document introuvable.', 404);
+    return this.download(
+      `telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=${fileType}&archive=false&anneeArchive=`,
+    );
   }
 
   private async download(query: string): Promise<EdFile> {
@@ -1095,24 +1101,27 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
   };
 }
 
-const DOC_KINDS: [string, DocKind][] = [
-  ['notes', 'bulletin'],
-  ['viescolaire', 'vie'],
-  ['administratifs', 'admin'],
-  ['inscriptions', 'admin'],
-  ['factures', 'facture'],
+/** Rubrique de `familledocuments.awp` → catégorie Orbite et type de fichier par défaut au téléchargement. */
+const DOC_KINDS: [string, DocKind, string][] = [
+  ['notes', 'bulletin', 'Note'],
+  ['viescolaire', 'vie', 'VieScolaire'],
+  ['administratifs', 'admin', ''],
+  ['inscriptions', 'admin', ''],
+  ['entreprises', 'admin', ''],
+  ['factures', 'facture', 'Facture'],
 ];
 
 /** Rubriques de `familledocuments.awp` aplaties, du plus récent au plus ancien. */
 export function normalizeDocuments(data: unknown, students: Map<string, string>): EdDocument[] {
   if (!data || typeof data !== 'object') return [];
   const out: EdDocument[] = [];
-  for (const [field, kind] of DOC_KINDS)
-    for (const d of records<{ id?: Id; libelle?: string; date?: string; idEleve?: Id }>(
+  for (const [field, kind, fallback] of DOC_KINDS)
+    for (const d of records<{ id?: Id; libelle?: string; date?: string; idEleve?: Id; type?: unknown }>(
       (data as Record<string, unknown>)[field],
     )) {
       const id = String(d.id ?? '');
       if (!/^\d{1,12}$/.test(id)) continue;
+      const given = typeof d.type === 'string' && /^\w{1,40}$/.test(d.type) ? d.type : '';
       out.push({
         id,
         name: String(d.libelle || 'Document')
@@ -1121,6 +1130,8 @@ export function normalizeDocuments(data: unknown, students: Map<string, string>)
         date: /^\d{4}-\d{2}-\d{2}/.test(String(d.date)) ? String(d.date).slice(0, 10) : '',
         kind,
         childId: d.idEleve != null ? (students.get(String(d.idEleve)) ?? null) : null,
+        // Administratifs : type vide ; les autres rubriques ont leur propre valeur.
+        fileType: field === 'administratifs' || field === 'entreprises' ? '' : given || fallback,
       });
     }
   return out.sort((a, b) => b.date.localeCompare(a.date));
@@ -1164,7 +1175,9 @@ function periodExtras(p: RawPeriod, settings: NonNullable<RawNotesData['parametr
   }
   const pp = String(p.ensembleMatieres?.nomPP || '').trim();
   if (pp) extras.mainTeacher = pp;
-  if (settings.affichageMoyenne === false) return extras;
+  // Moyennes masquées par l'établissement, ou publiées seulement une fois la période close.
+  if (settings.affichageMoyenne === false || settings.moyenneEleve === false) return extras;
+  if (settings.moyenneUniquementPeriodeCloture === true && !p.cloture) return extras;
   const hideClass = settings.moyenneClasse === false;
   const subjects: SubjectAverage[] = records<RawDiscipline>(p.ensembleMatieres?.disciplines)
     .filter((d) => !d.groupeMatiere && (d.codeMatiere || d.discipline))
@@ -1173,9 +1186,9 @@ function periodExtras(p: RawPeriod, settings: NonNullable<RawNotesData['parametr
       label: String(d.discipline || d.libelleMatiere || d.codeMatiere || '').trim(),
       average: number(d.moyenne),
       classAverage: hideClass ? null : number(d.moyenneClasse),
-      min: hideClass ? null : number(d.moyenneMin),
-      max: hideClass ? null : number(d.moyenneMax),
-      coefficient: number(d.coef),
+      min: hideClass || settings.moyenneMin === false ? null : number(d.moyenneMin),
+      max: hideClass || settings.moyenneMax === false ? null : number(d.moyenneMax),
+      coefficient: settings.moyenneCoefMatiere === false ? null : number(d.coef),
       teachers: records<{ nom?: string }>(d.professeurs)
         .map((t) => String(t.nom || '').trim())
         .filter(Boolean),

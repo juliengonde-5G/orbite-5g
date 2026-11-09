@@ -209,10 +209,10 @@ class FakeEd implements EdClient {
   docsCalls = 0;
   async documents(): Promise<EdDocument[]> {
     this.docsCalls++;
-    return [{ id: '77', name: 'Bulletin T1', date: '2026-01-20', kind: 'bulletin', childId: '1:11' }];
+    return [{ id: '77', name: 'Bulletin T1', date: '2026-01-20', kind: 'bulletin', childId: '1:11', fileType: 'Note' }];
   }
-  async documentFile(id: string): Promise<EdFile> {
-    return { type: 'application/pdf', name: 'piece-jointe', body: Buffer.from('%PDF-1.4 bulletin ' + id) };
+  async documentFile(id: string, fileType: string): Promise<EdFile> {
+    return { type: 'application/pdf', name: 'piece-jointe', body: Buffer.from(`%PDF-1.4 bulletin ${id} ${fileType}`) };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const base = { when: '', justified: null, by: '', comment: '' };
@@ -810,7 +810,8 @@ test('séances, documents, notifications : élève limité à son contenu, liens
     const doc = await fetch(`http://127.0.0.1:${port}${docUrl}`);
     assert.equal(doc.status, 200);
     assert.match(doc.headers.get('content-disposition') ?? '', /Bulletin T1\.pdf/);
-    assert.match(await doc.text(), /bulletin 77/);
+    assert.match(await doc.text(), /bulletin 77 Note/);
+    assert.ok(!JSON.stringify(s.body).includes('fileType'), 'type ÉcoleDirecte gardé côté serveur');
     const asMail = await fetch(`http://127.0.0.1:${port}${docUrl.replace('/api/document/', '/api/message/')}`);
     assert.notEqual(asMail.status, 200, 'un lien de document n’ouvre pas une pièce jointe');
 

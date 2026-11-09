@@ -355,4 +355,12 @@ test('moyennes officielles par matière, conseil de classe et appréciations, sa
   assert.equal(hidden?.classAverage, null);
   assert.equal(hidden?.min, null);
   assert.equal(normalizeNotes({ ...raw, parametrage: { affichageMoyenne: false } }).periods[0]?.subjects, undefined);
+  assert.equal(normalizeNotes({ ...raw, parametrage: { moyenneEleve: false } }).periods[0]?.subjects, undefined);
+  const closedOnly = normalizeNotes({ ...raw, parametrage: { moyenneUniquementPeriodeCloture: true } }).periods[0];
+  assert.equal(closedOnly?.subjects, undefined, 'période en cours : moyennes pas encore publiées');
+  assert.equal(closedOnly?.councilDate, '2026-12-10', 'le conseil reste affiché');
+  const noRange = normalizeNotes({ ...raw, parametrage: { moyenneMin: false, moyenneCoefMatiere: false } }).periods[0];
+  assert.equal(noRange?.subjects?.[0]?.min, null);
+  assert.equal(noRange?.subjects?.[0]?.max, 19);
+  assert.equal(noRange?.subjects?.[0]?.coefficient, null);
 });

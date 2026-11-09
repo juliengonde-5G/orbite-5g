@@ -838,9 +838,14 @@ export function createApp(options: AppOptions): http.Server {
         const me = requireParent(ctx);
         try {
           const docs = await ed.documents(ctx.data.refresh === true ? 0 : undefined);
-          const items: SchoolDocument[] = docs.map((d) => ({
-            ...d,
-            url: fileLink(me, ctx.token, 'doc', d.id, '/api/document/file'),
+          // Le type de fichier ÉcoleDirecte reste côté serveur.
+          const items: SchoolDocument[] = docs.map(({ id, name, date, kind, childId }) => ({
+            id,
+            name,
+            date,
+            kind,
+            childId,
+            url: fileLink(me, ctx.token, 'doc', id, '/api/document/file'),
           }));
           return { items, unavailable: false } satisfies DocumentList;
         } catch (e) {
@@ -1116,7 +1121,7 @@ export function createApp(options: AppOptions): http.Server {
           const doc = (await ed.documents()).find((d) => d.id === link.f);
           if (!doc) throw new HttpError('Document introuvable.', 404);
           listed = { name: doc.name.endsWith('.pdf') ? doc.name : doc.name + '.pdf' };
-          file = await ed.documentFile(link.f);
+          file = await ed.documentFile(doc.id, doc.fileType);
         } else {
           const ref = parseMailKey(link.k);
           await mailAllowed(member, ref);
