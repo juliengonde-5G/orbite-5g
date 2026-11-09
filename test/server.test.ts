@@ -8,7 +8,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -222,7 +222,21 @@ class FakeEd implements EdClient {
   }
 }
 
-const coach: Coach = { configured: true, advice: async () => 'Continue comme ça en maths.' };
+class FakeCoach implements Coach {
+  key = 'env';
+  get configured() {
+    return !!this.key;
+  }
+  async advice() {
+    return 'Continue comme ça en maths.';
+  }
+  setKey(key: string | null) {
+    this.key = key ?? 'env';
+  }
+  async check(key: string) {
+    return key.endsWith('x'.repeat(20)) ? ('refused' as const) : ('ok' as const);
+  }
+}
 
 interface Client {
   get(path: string, headers?: Record<string, string>): Promise<{ status: number; body: any; cookie: string }>;
@@ -238,7 +252,7 @@ async function start(dir: string, seed = 'Camille:parent+admin, Alex:parent, Lé
     vault: new Vault(dir),
     familySeed: seed,
     edFactory: () => new FakeEd(),
-    coach,
+    coach: new FakeCoach(),
     refreshFloor: 0,
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -693,6 +707,48 @@ test('messagerie en lecture seule : boîte famille, partage avec un enfant, piè
     // Profil verrouillé sur cet appareil : le lien de pièce jointe ne sert plus.
     await kid.post('/api/logout', {});
     assert.equal((await fetch(`http://127.0.0.1:${port}${again}`)).status, 410);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('clé API Claude réglable par le parent administrateur, chiffrée et jamais renvoyée', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const parent = app.browser();
+    const members = (await parent.get('/api/session')).body.members;
+    const admin = members.find((m: any) => m.admin);
+    await parent.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    const other = members.find((m: any) => m.role === 'parent' && !m.admin);
+    const code = (await parent.post('/api/admin/member/code', { memberId: other.id })).body.code;
+    const second = app.browser();
+    await second.post('/api/activate', { memberId: other.id, code, pin: '730519' });
+    assert.equal((await second.get('/api/admin/claude')).status, 403, 'réservé au parent administrateur');
+    assert.equal((await second.post('/api/admin/claude', { key: 'sk-ant-' + 'b'.repeat(40) })).status, 403);
+
+    let s = await parent.post('/api/admin/claude', { key: 'pas-une-cle' });
+    assert.equal(s.status, 400);
+    s = await parent.post('/api/admin/claude', { key: 'sk-ant-api03-' + 'x'.repeat(30) });
+    assert.equal(s.status, 400);
+    assert.match(s.body.error, /refuse/);
+
+    const key = 'sk-ant-api03-' + 'A1b2'.repeat(10) + 'Zz9q';
+    s = await parent.post('/api/admin/claude', { key });
+    assert.equal(s.status, 200);
+    assert.deepEqual(
+      { source: s.body.source, masked: s.body.masked, check: s.body.check, configured: s.body.configured },
+      { source: 'app', masked: 'sk-ant-…Zz9q', check: 'ok', configured: true },
+    );
+    assert.ok(!JSON.stringify(s.body).includes(key));
+    assert.ok(!JSON.stringify((await parent.get('/api/admin/claude')).body).includes(key));
+    assert.doesNotMatch(readFileSync(join(dir, 'claude.enc')).toString('latin1'), /sk-ant-api03/);
+    assert.equal((await parent.get('/api/session')).body.coaching, true);
+
+    s = await parent.post('/api/admin/claude/remove', {});
+    assert.equal(s.body.source === 'app', false);
+    assert.equal(s.body.masked === 'sk-ant-…Zz9q', false);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

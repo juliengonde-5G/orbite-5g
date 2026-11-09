@@ -364,3 +364,15 @@ export interface LifeEvent {
 export interface SchoolLife {
   events: LifeEvent[];
 }
+
+/** État de la clé API Claude, pour le parent administrateur. La clé elle-même n'est jamais renvoyée. */
+export interface ClaudeKeyStatus {
+  configured: boolean;
+  /** `app` : clé saisie dans Orbite ; `env` : variable ANTHROPIC_API_KEY du conteneur. */
+  source: 'app' | 'env' | null;
+  /** Début et fin de la clé (« sk-ant-…a1B2 »). */
+  masked: string | null;
+  updatedAt: string | null;
+  /** Dernière vérification auprès d'Anthropic. */
+  check: 'ok' | 'refused' | 'unreachable' | null;
+}

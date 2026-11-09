@@ -6,6 +6,7 @@
 import type {
   AuthResult,
   BagDay,
+  ClaudeKeyStatus,
   Kit,
   EdStatus,
   FamilyDashboard,
@@ -83,6 +84,9 @@ export const api = {
       call<AuthResult>('POST', '/api/admin/ed/connect', { username, password, remember }),
     verify: (input: { choice?: number; code?: string }) => call<AuthResult>('POST', '/api/admin/ed/verify', input),
     disconnect: () => call<EdStatus>('POST', '/api/admin/ed/disconnect'),
+    claude: () => call<ClaudeKeyStatus>('GET', '/api/admin/claude'),
+    setClaudeKey: (key: string) => call<ClaudeKeyStatus>('POST', '/api/admin/claude', { key }),
+    removeClaudeKey: () => call<ClaudeKeyStatus>('POST', '/api/admin/claude/remove'),
     add: (name: string, role: 'parent' | 'child', grade: string) =>
       call<MemberView>('POST', '/api/admin/member/add', { name, role, grade }),
     update: (memberId: string, changes: Record<string, unknown>) =>
