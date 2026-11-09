@@ -3341,6 +3341,13 @@ button {
 .recap-child {
   display: grid;
   gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--line);
+  .note-list {
+    background: transparent;
+  }
 }
 .recap-head {
   display: flex;
@@ -3410,6 +3417,7 @@ button {
 
 /* ---------- Documents ---------- */
 .doc-main {
+  flex: 1;
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -3417,7 +3425,4 @@ button {
     color: var(--ink-3);
     font-weight: 400;
   }
-}
-.doc-row .mail-file-icon {
-  color: var(--accent);
 }

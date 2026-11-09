@@ -67,14 +67,13 @@ function docRow(doc: SchoolDocument): HTMLElement {
   );
 }
 
-/** Accueil famille : les derniers documents publiés (rien si la rubrique est vide ou indisponible). */
+/** Accueil famille : les deux derniers documents publiés (rien si la rubrique est vide ou indisponible). */
 export function familyDocsBlock(actions: Actions): HTMLElement | null {
   const d = docs(actions);
   const items = d.value?.items ?? [];
   if (!items.length) return null;
-  const since = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
-  const recent = items.filter((x) => x.date >= since).slice(0, 3);
-  if (!recent.length) return null;
+  // Toujours visible quand le collège a publié quelque chose : c'est l'entrée vers la liste.
+  const recent = items.slice(0, 2);
   return h(
     'section.block',
     sectionHead(
