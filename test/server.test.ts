@@ -7,6 +7,7 @@
  * simulée par l'en-tête X-Forwarded-For qu'ajoute le reverse proxy.
  */
 import test from 'node:test';
+import { createECDH, randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,7 @@ import type {
   Course,
   Dashboard,
   HomeworkPage,
+  Lesson,
   Note,
   SchoolInfo,
   SchoolLife,
@@ -110,6 +112,9 @@ class FakeEd implements EdClient {
       homeworkNext: null,
       homeworkUntil: '2026-12-09',
     };
+  }
+  async lessonsForChild(_childId: string, date: string): Promise<Lesson[]> {
+    return [{ id: date + ':1', date, subject: 'MATHS', teacher: 'M. Durand', text: 'Chapitre 4', documents: [] }];
   }
   async timetableForChild(_childId: string, from: string): Promise<Course[]> {
     const base = { room: 'S1', teacher: 'M. X', kind: 'cours', modified: false, exempted: false };
@@ -749,6 +754,63 @@ test('clé API Claude réglable par le parent administrateur, chiffrée et jamai
     s = await parent.post('/api/admin/claude/remove', {});
     assert.equal(s.body.source === 'app', false);
     assert.equal(s.body.masked === 'sk-ant-…Zz9q', false);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('séances, notifications : élève limité à son contenu, abonnement lié à l’appareil, retiré au verrouillage', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const parent = app.browser();
+    const admin = (await parent.get('/api/session')).body.members.find((m: any) => m.admin);
+    await parent.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    await parent.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
+    await parent.post('/api/admin/ed/verify', { choice: 0 });
+    await parent.post('/api/data', {});
+    const leo = (await parent.get('/api/admin/members')).body.members.find((m: any) => m.name === 'Léo');
+    const code = (await parent.post('/api/admin/member/code', { memberId: leo.id })).body.code;
+    const kid = app.browser();
+    await kid.post('/api/activate', { memberId: leo.id, code, pin: '730519' });
+
+    // Contenu de séance : jours passés seulement, et seulement pour soi.
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    let s = await kid.post('/api/lessons', { childId: '1:11', date: yesterday });
+    assert.equal(s.status, 200);
+    assert.equal(s.body.lessons[0].text, 'Chapitre 4');
+    assert.equal((await kid.post('/api/lessons', { childId: '1:12', date: yesterday })).status, 404);
+    assert.equal((await kid.post('/api/lessons', { childId: '1:11', date: '2020-01-01' })).status, 400);
+    assert.equal((await kid.post('/api/lessons', { childId: '1:11', date: '../x' })).status, 400);
+
+    // Notifications : clé publique seule, abonnement validé et lié à l'appareil.
+    assert.equal((await app.browser().get('/api/push')).status, 401);
+    s = await kid.get('/api/push');
+    assert.match(s.body.publicKey, /^[\w-]{87}$/);
+    assert.equal(s.body.subscribed, false);
+    assert.ok(!JSON.stringify(s.body).includes('privateKey'));
+    assert.equal(
+      (await kid.post('/api/push/subscribe', { subscription: { endpoint: 'http://127.0.0.1/x', keys: {} } })).status,
+      400,
+      'pas de relais vers une adresse arbitraire',
+    );
+    const ecdh = createECDH('prime256v1');
+    ecdh.generateKeys();
+    const subscription = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      keys: { p256dh: ecdh.getPublicKey().toString('base64url'), auth: randomBytes(16).toString('base64url') },
+    };
+    s = await kid.post('/api/push/subscribe', { subscription });
+    assert.equal(s.body.subscribed, true);
+    s = await kid.post('/api/push/prefs', { prefs: { bag: false } });
+    assert.equal(s.body.prefs.bag, false);
+    assert.equal(s.body.prefs.notes, true);
+    assert.equal((await parent.get('/api/push')).body.subscribed, false, 'abonnement propre à chaque profil');
+    assert.doesNotMatch(readFileSync(join(dir, 'push.enc')).toString('latin1'), /fcm\.googleapis/);
+    await kid.post('/api/logout', {});
+    await kid.post('/api/login', { memberId: leo.id, pin: '730519' });
+    assert.equal((await kid.get('/api/push')).body.subscribed, false, 'verrouiller retire l’abonnement');
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

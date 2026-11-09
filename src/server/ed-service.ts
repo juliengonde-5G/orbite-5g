@@ -42,6 +42,7 @@ import type {
   Dashboard,
   EdStatus,
   HomeworkPage,
+  Lesson,
   SchoolInfo,
   SchoolLife,
 } from '../shared/types.ts';
@@ -55,6 +56,7 @@ export interface EdClient {
   dashboard(): Promise<Dashboard>;
   homeworkForChild(childId: string, options: { cursor: number | null }): Promise<HomeworkPage>;
   timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
+  lessonsForChild(childId: string, date: string): Promise<Lesson[]>;
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   mailbox(childId: string | null): Promise<EdMail[]>;
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
@@ -115,6 +117,7 @@ export class EdService {
   private queue: Promise<unknown> = Promise.resolve();
   private homeworkCache = new Map<string, { time: number; value: HomeworkPage }>();
   private timetableCache = new Map<string, { time: number; value: Course[] }>();
+  private lessonCache = new Map<string, { time: number; value: Lesson[] }>();
   private infoCache = new Map<string, { time: number; value: SchoolInfo[] }>();
   private mailCache = new Map<string, { time: number; value: EdMail[] }>();
   private mailDetails = new Map<string, { time: number; value: EdMailDetail }>();
@@ -238,6 +241,7 @@ export class EdService {
   private clearCaches(): void {
     this.homeworkCache.clear();
     this.timetableCache.clear();
+    this.lessonCache.clear();
     this.infoCache.clear();
     this.mailCache.clear();
     this.mailDetails.clear();
@@ -376,6 +380,20 @@ export class EdService {
       const value = await this.call((c) => c.timetableForChild(childId, date, date));
       this.timetableCache.set(key, { time: Date.now(), value });
       if (this.timetableCache.size > 60) this.timetableCache.delete(this.timetableCache.keys().next().value as string);
+      return value;
+    });
+  }
+
+  /** Contenu des séances d'un jour passé (cache 30 min). */
+  lessons(childId: string, date: string, maxAge = 30 * 60000): Promise<Lesson[]> {
+    return this.serial(async () => {
+      const key = childId + ':' + date;
+      const cached = this.lessonCache.get(key);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      if (!this.cache.dashboard?.children.some((c) => c.id === childId)) throw new EdError('Élève introuvable.', 404);
+      const value = await this.call((c) => c.lessonsForChild(childId, date));
+      this.lessonCache.set(key, { time: Date.now(), value });
+      if (this.lessonCache.size > 80) this.lessonCache.delete(this.lessonCache.keys().next().value as string);
       return value;
     });
   }

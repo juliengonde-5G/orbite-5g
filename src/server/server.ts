@@ -825,6 +825,18 @@ export function createApp(options: AppOptions): http.Server {
       },
     ],
     [
+      'POST /api/lessons',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const date = ctx.data.date;
+        if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError('Date invalide.', 400);
+        const ago = (Date.parse(parisDate(new Date()) + 'T12:00:00Z') - Date.parse(date + 'T12:00:00Z')) / 86400000;
+        if (!(ago >= 0 && ago <= 31)) throw new HttpError('Date hors de la période proposée.', 400);
+        return { date, lessons: await ed.lessons(childId, date) };
+      },
+    ],
+    [
       'POST /api/schoollife',
       async (ctx) => {
         const me = requireMember(ctx);

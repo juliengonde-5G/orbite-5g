@@ -107,6 +107,16 @@ export interface SubjectAverage {
   teachers: string[];
 }
 
+/** Ce qui a été fait en classe un jour donné (contenu de séance du cahier de textes). */
+export interface Lesson {
+  id: string;
+  date: string;
+  subject: string;
+  teacher: string;
+  text: string;
+  documents: string[];
+}
+
 /** Les devoirs faits ne sont jamais renvoyés ; `unknown` quand ÉcoleDirecte ne précise pas l'état. */
 export type HomeworkStatus = 'pending' | 'unknown';
 

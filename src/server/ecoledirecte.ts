@@ -44,6 +44,7 @@ import type {
   Course,
   LifeEvent,
   LifeKind,
+  Lesson,
   MailFile,
   Note,
   Period,
@@ -219,8 +220,10 @@ interface RawHomeworkTask {
 interface RawHomeworkSubject {
   id?: Id;
   matiere?: string;
+  nomProf?: string;
   interrogation?: boolean;
   aFaire?: RawHomeworkTask;
+  contenuDeSeance?: { contenu?: unknown; documents?: { libelle?: string }[] };
 }
 
 interface HomeworkEntry extends RawHomeworkEntry {
@@ -654,6 +657,18 @@ export class EcoleDirecte {
     });
   }
 
+  /** Contenu des séances d'un jour (« ce qui a été fait en classe »). */
+  lessonsForChild(childId: string, date: string): Promise<Lesson[]> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<{ matieres?: unknown }>(
+        `Eleves/${encodeURIComponent(studentId)}/cahierdetexte/${date}.awp?verbe=get`,
+        {},
+      );
+      if (Number(body.code) !== 200) throw new EdError('Cahier de textes indisponible.');
+      return normalizeLessons(date, body.data?.matieres);
+    });
+  }
+
   /** Informations de l'établissement (post-its de l'accueil ÉcoleDirecte). */
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]> {
     return this.forChild(childId, async (studentId) => {
@@ -1030,6 +1045,24 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
     subSubject,
     subject: subSubject && subSubject !== parentSubject ? `${parentSubject} · ${subSubject}` : parentSubject,
   };
+}
+
+/** Séances d'un jour : seules celles dont le professeur a rempli le contenu ou joint un document. */
+export function normalizeLessons(date: string, matieres: unknown): Lesson[] {
+  return records<RawHomeworkSubject>(matieres)
+    .map((m, i) => ({
+      id: `${date}:${String(m.id ?? i)}`,
+      date,
+      subject: String(m.matiere || 'Matière').trim(),
+      teacher: String(m.nomProf || '')
+        .replace(/^\s*par\s+/i, '')
+        .trim(),
+      text: homeworkText(m.contenuDeSeance?.contenu),
+      documents: records<{ libelle?: string }>(m.contenuDeSeance?.documents).map((d) =>
+        String(d.libelle || 'Pièce jointe'),
+      ),
+    }))
+    .filter((l) => l.text || l.documents.length);
 }
 
 /** Texte libre ÉcoleDirecte (parfois en HTML) réduit à une ligne propre. */

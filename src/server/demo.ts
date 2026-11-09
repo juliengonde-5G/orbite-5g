@@ -16,6 +16,7 @@ import type {
   Dashboard,
   Homework,
   HomeworkPage,
+  Lesson,
   Note,
   SchoolInfo,
   SchoolLife,
@@ -33,6 +34,14 @@ const SUBJECTS = [
   'TECHNOLOGIE',
 ];
 const TITLES = ['Contrôle', 'Interrogation écrite', 'Devoir maison', 'Évaluation', 'Exposé', 'Quiz'];
+const LESSONS = [
+  'Correction du devoir maison, puis début du chapitre 4 : les proportions.',
+  'Lecture analytique de la scène 2. Relevé des procédés comiques.',
+  'Révision du prétérit. Exercices oraux par groupes.',
+  'Activité documentaire sur la Révolution industrielle, trace écrite dans le cahier.',
+  'Expérience : la dissolution du sel. Schéma à compléter.',
+];
+
 const TASKS = [
   'Exercices 4 et 5 page 82.',
   'Apprendre la leçon sur les fractions.',
@@ -286,6 +295,19 @@ export class DemoEd implements EdClient {
       homeworkNext: null,
       homeworkUntil: day(29),
     };
+  }
+  async lessonsForChild(childId: string, date: string): Promise<Lesson[]> {
+    const weekday = new Date(date + 'T12:00:00Z').getUTCDay();
+    if (weekday === 0 || weekday === 6) return [];
+    const rand = seeded(Number(date.replace(/-/g, '')) + Number(childId.slice(-1)));
+    return SUBJECTS.filter(() => rand() < 0.45).map((subject, i) => ({
+      id: `${date}:${i}`,
+      date,
+      subject,
+      teacher: ['M. Durand', 'Mme Ferrand', 'Mme Lopez', 'M. Petit'][i % 4] ?? '',
+      text: LESSONS[Math.floor(rand() * LESSONS.length)] ?? '',
+      documents: rand() < 0.2 ? ['Diaporama-du-cours.pdf'] : [],
+    }));
   }
   async timetableForChild(childId: string, from: string): Promise<Course[]> {
     const weekday = new Date(from + 'T12:00:00Z').getUTCDay();

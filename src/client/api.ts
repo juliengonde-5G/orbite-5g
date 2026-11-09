@@ -11,6 +11,7 @@ import type {
   EdStatus,
   FamilyDashboard,
   HomeworkPage,
+  Lesson,
   MailDetail,
   MailList,
   MemberView,
@@ -80,6 +81,8 @@ export const api = {
   share: (key: string, childIds: string[]) =>
     call<{ sharedWith: string[] }>('POST', '/api/message/share', { key, childIds }),
   schoolLife: (childId: string, refresh = false) => call<SchoolLife>('POST', '/api/schoollife', { childId, refresh }),
+  lessons: (childId: string, date: string) =>
+    call<{ date: string; lessons: Lesson[] }>('POST', '/api/lessons', { childId, date }),
   push: {
     status: () => call<PushStatus>('GET', '/api/push'),
     subscribe: (subscription: unknown) => call<PushStatus>('POST', '/api/push/subscribe', { subscription }),

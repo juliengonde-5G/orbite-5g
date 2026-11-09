@@ -22,6 +22,7 @@ import { orbit } from './orbit.ts';
 import { progressChart } from './chart.ts';
 import { bagKey } from './bag-view.ts';
 import { familyLifeBlock, lifeCard, lifeFacts } from './life-view.ts';
+import { lessonsBody, weekStrip } from './class-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
@@ -44,6 +45,7 @@ export interface Actions {
   loadMessage(key: string): void;
   share(key: string, childIds: string[]): void;
   loadLife(childId: string, refresh?: boolean): void;
+  loadLessons(childId: string, date: string, refresh?: boolean): void;
 }
 
 /* ---------- En-tête « ciel » ---------- */
@@ -126,7 +128,7 @@ export function subjectMark(subject: string): HTMLElement {
   return h('span.subject-mark', { style: { '--h': String(subjectHue(subject.split(' · ')[0] ?? subject)) } });
 }
 
-function noteRow(child: Child, n: Note, showChild = false, showSubject = true): HTMLElement {
+export function noteRow(child: Child, n: Note, showChild = false, showSubject = true): HTMLElement {
   const fresh = state.fresh.has(noteKey(child.id, n));
   const skills = (n.skills ?? []).filter((s) => s.level !== null);
   return h(
@@ -289,13 +291,18 @@ function homeworkBlock(child: Child, actions: Actions, mode: 'focus' | 'all'): H
         ),
     );
   }
-  // Mode « tous » : regroupés par jour avec progression.
+  // Mode « tous » : la semaine d'un coup d'œil, puis regroupés par jour avec progression.
   const days = new Map<string, Homework[]>();
-  for (const t of hw.items) days.set(t.dueDate, [...(days.get(t.dueDate) ?? []), t]);
+  for (const t of hw.items)
+    if (!state.taskDay || t.dueDate === state.taskDay) days.set(t.dueDate, [...(days.get(t.dueDate) ?? []), t]);
   return h(
     'div.days',
+    weekStrip(hw.items, checks, actions),
     hw.partial && h('p.inline-note', 'Une partie du cahier de textes n’a pas pu être lue.'),
-    days.size === 0 && emptyState('Aucun devoir à venir', 'Le cahier de textes est vide pour les prochaines semaines.'),
+    days.size === 0 &&
+      (state.taskDay
+        ? emptyState(`Rien pour ${relativeDay(state.taskDay).toLowerCase()}`, 'Aucun devoir à rendre ce jour-là.')
+        : emptyState('Aucun devoir à venir', 'Le cahier de textes est vide pour les prochaines semaines.')),
     [...days].map(([date, items]) => {
       const done = items.filter((t) => checks.has(t.id)).length;
       const summary = hw.dates.find((d) => d.date === date);
@@ -328,6 +335,7 @@ function homeworkBlock(child: Child, actions: Actions, mode: 'focus' | 'all'): H
       );
     }),
     hw.next !== null &&
+      !state.taskDay &&
       h(
         'button.button.button-wide',
         { type: 'button', disabled: hw.moreLoading, onclick: () => actions.loadHomework(child.id, true) },
@@ -536,6 +544,17 @@ export function familyHome(actions: Actions): HTMLElement {
     edBanner(actions),
     h(
       'div.flow',
+      h(
+        'button.recap-link',
+        { type: 'button', onclick: () => actions.go('recap') },
+        icon('chart', 20),
+        h(
+          'span',
+          h('b', 'Le récap de la semaine'),
+          h('small', 'Notes, devoirs, contrôles et vie scolaire, enfant par enfant'),
+        ),
+        icon('next', 18),
+      ),
       familyMailBlock(actions),
       familyLifeBlock(children, actions),
       alertsBlock(children, actions),
@@ -606,16 +625,44 @@ function edBanner(actions: Actions): HTMLElement | null {
 /* ---------- Onglets ---------- */
 
 export function tasksView(child: Child, actions: Actions): HTMLElement {
+  const inClass = state.tasksMode === 'class';
   return h(
     'div.screen',
     { style: accent(child.id) },
     sky({
-      title: 'Devoirs',
-      subtitle: state.session?.me?.role === 'parent' ? child.name : 'Coche ce qui est fait',
+      title: inClass ? 'En classe' : 'Devoirs',
+      subtitle:
+        state.session?.me?.role === 'parent'
+          ? child.name
+          : inClass
+            ? 'Ce qui a été fait en cours'
+            : 'Coche ce qui est fait',
       extra: [childSwitcher(actions)],
     }),
-    homeworkBlock(child, actions, 'all'),
-    h('p.footnote', 'Les cases cochées ici restent dans Orbite et ne sont pas envoyées à ÉcoleDirecte.'),
+    h(
+      'div.toolbar',
+      h(
+        'div.segmented',
+        { role: 'tablist' },
+        (['todo', 'class'] as const).map((mode) =>
+          h(
+            `button${state.tasksMode === mode ? '.is-active' : ''}`,
+            {
+              type: 'button',
+              role: 'tab',
+              'aria-selected': String(state.tasksMode === mode),
+              onclick: () => {
+                state.tasksMode = mode;
+                actions.rerender();
+              },
+            },
+            mode === 'todo' ? 'À faire' : 'En classe',
+          ),
+        ),
+      ),
+    ),
+    inClass ? lessonsBody(child, actions) : homeworkBlock(child, actions, 'all'),
+    !inClass && h('p.footnote', 'Les cases cochées ici restent dans Orbite et ne sont pas envoyées à ÉcoleDirecte.'),
   );
 }
 
