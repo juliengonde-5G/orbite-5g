@@ -329,6 +329,8 @@ function claudeKeySheet(actions: SettingsActions, replacing: boolean): void {
           body.classList.add('is-busy');
           try {
             claudeStatus = await api.admin.setClaudeKey(input.value);
+            // Conseils déjà en échec avec l’ancienne clé : on les redemandera.
+            state.coaching.clear();
             close();
             actions.toast(
               claudeStatus.check === 'ok'
@@ -414,6 +416,7 @@ function claudeCard(actions: SettingsActions): HTMLElement {
               onclick: () =>
                 confirmSheet('Retirer la clé Claude ?', envNote(s), 'Retirer', async () => {
                   claudeStatus = await api.admin.removeClaudeKey();
+                  state.coaching.clear();
                   await actions.reloadSession();
                   actions.rerender();
                 }),
