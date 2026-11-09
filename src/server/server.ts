@@ -37,14 +37,16 @@ import type {
   BagDay,
   ClaudeKeyStatus,
   Dashboard,
+  DocumentList,
   FamilyDashboard,
   Kit,
   MailDetail,
   MailItem,
   MailList,
   SessionInfo,
+  SchoolDocument,
 } from '../shared/types.ts';
-import type { EdMail } from './ecoledirecte.ts';
+import type { EdFile, EdMail } from './ecoledirecte.ts';
 import { bagDate, bagItems, emptyKit } from '../shared/bag.ts';
 
 const projectRoot = new URL('../../', import.meta.url);
@@ -439,14 +441,20 @@ export function createApp(options: AppOptions): http.Server {
   };
 
   /** Lien de téléchargement signé (15 min) : il fonctionne même ouvert hors de l'appli installée, sans cookie. */
-  const fileLink = (me: MemberRecord, token: string | undefined, key: string, file: string): string => {
+  const fileLink = (
+    me: MemberRecord,
+    token: string | undefined,
+    key: string,
+    file: string,
+    route = '/api/message/file',
+  ): string => {
     const payload = Buffer.from(
       JSON.stringify({ k: key, f: file, m: me.id, d: family.deviceTag(token), e: Date.now() + 15 * 60000 }),
     ).toString('base64url');
     const sig = createHmac('sha256', secretDoc.secret)
       .update('file:' + payload)
       .digest('base64url');
-    return `/api/message/file?t=${payload}.${sig}`;
+    return `${route}?t=${payload}.${sig}`;
   };
 
   const readFileLink = (token: string | null): { k: string; f: string; m: string; d: string } => {
@@ -825,6 +833,23 @@ export function createApp(options: AppOptions): http.Server {
       },
     ],
     [
+      'POST /api/documents',
+      async (ctx) => {
+        const me = requireParent(ctx);
+        try {
+          const docs = await ed.documents(ctx.data.refresh === true ? 0 : undefined);
+          const items: SchoolDocument[] = docs.map((d) => ({
+            ...d,
+            url: fileLink(me, ctx.token, 'doc', d.id, '/api/document/file'),
+          }));
+          return { items, unavailable: false } satisfies DocumentList;
+        } catch (e) {
+          if (e instanceof EdError && e.status === 401) throw e;
+          return { items: [], unavailable: true } satisfies DocumentList;
+        }
+      },
+    ],
+    [
       'POST /api/lessons',
       async (ctx) => {
         const me = requireMember(ctx);
@@ -1079,15 +1104,27 @@ export function createApp(options: AppOptions): http.Server {
       };
 
       if (req.method === 'GET' && path === '/api/session') return json(200, sessionInfo(ctx));
-      if (req.method === 'GET' && path === '/api/message/file') {
+      if (req.method === 'GET' && (path === '/api/message/file' || path === '/api/document/file')) {
         const link = readFileLink(new URL(req.url ?? '/', 'http://orbite.invalid').searchParams.get('t'));
         const member = family.members.find((m) => m.id === link.m);
         if (!member) throw new HttpError('Lien de pièce jointe invalide.', 403);
-        const ref = parseMailKey(link.k);
-        await mailAllowed(member, ref);
-        const listed = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
-        if (!listed) throw new HttpError('Pièce jointe introuvable.', 404);
-        const file = await ed.mailFile(link.f);
+        let file: EdFile;
+        let listed: { name: string };
+        if (path === '/api/document/file') {
+          // Documents : parents seulement, et uniquement un document de la liste ÉcoleDirecte.
+          if (link.k !== 'doc' || member.role !== 'parent') throw new HttpError('Lien de document invalide.', 403);
+          const doc = (await ed.documents()).find((d) => d.id === link.f);
+          if (!doc) throw new HttpError('Document introuvable.', 404);
+          listed = { name: doc.name.endsWith('.pdf') ? doc.name : doc.name + '.pdf' };
+          file = await ed.documentFile(link.f);
+        } else {
+          const ref = parseMailKey(link.k);
+          await mailAllowed(member, ref);
+          const att = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
+          if (!att) throw new HttpError('Pièce jointe introuvable.', 404);
+          listed = att;
+          file = await ed.mailFile(link.f);
+        }
         const type = SAFE_TYPES.test(file.type) ? file.type : 'application/octet-stream';
         const name = (file.name !== 'piece-jointe' ? file.name : listed.name).replace(/[\p{Cc}"\\]/gu, '');
         const ascii = name.normalize('NFD').replace(/[^\x20-\x7e]/g, '') || 'piece-jointe';

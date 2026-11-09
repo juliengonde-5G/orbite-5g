@@ -6,7 +6,7 @@
  * aucune donnée réelle. N'importe quel identifiant est accepté, sans question.
  */
 import { parisDate } from '../shared/metrics.ts';
-import type { EdFile, EdMail, EdMailDetail, Factor, SavedAuth } from './ecoledirecte.ts';
+import type { EdDocument, EdFile, EdMail, EdMailDetail, Factor, SavedAuth } from './ecoledirecte.ts';
 import type { EdClient } from './ed-service.ts';
 import type {
   AuthResult,
@@ -368,6 +368,27 @@ export class DemoEd implements EdClient {
   }
   async mailFile(fileId: string): Promise<EdFile> {
     return { type: 'application/pdf', name: `piece-${fileId}.pdf`, body: DEMO_PDF };
+  }
+  async documents(): Promise<EdDocument[]> {
+    const kids: [string, string][] = [
+      ['1:21', 'Léo'],
+      ['1:22', 'Nina'],
+      ['1:23', 'Malo'],
+    ];
+    return [
+      ...kids.map(([childId, name], i) => ({
+        id: String(900 + i),
+        name: `Bulletin du 1er trimestre – ${name}`,
+        date: day(-55),
+        kind: 'bulletin' as const,
+        childId,
+      })),
+      { id: '910', name: 'Certificat de scolarité', date: day(-62), kind: 'admin', childId: '1:21' },
+      { id: '911', name: 'Règlement intérieur', date: day(-66), kind: 'admin', childId: null },
+    ];
+  }
+  async documentFile(): Promise<EdFile> {
+    return { type: 'application/pdf', name: 'document.pdf', body: DEMO_PDF };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const n = Number(childId.slice(-1));

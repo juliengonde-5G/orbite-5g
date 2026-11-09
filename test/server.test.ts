@@ -16,7 +16,14 @@ import type { AddressInfo } from 'node:net';
 import { request } from 'node:http';
 import { createApp } from '../src/server/server.ts';
 import { Vault } from '../src/server/vault.ts';
-import { EdError, type EdFile, type EdMail, type EdMailDetail, type Factor } from '../src/server/ecoledirecte.ts';
+import {
+  EdError,
+  type EdDocument,
+  type EdFile,
+  type EdMail,
+  type EdMailDetail,
+  type Factor,
+} from '../src/server/ecoledirecte.ts';
 import type { EdClient } from '../src/server/ed-service.ts';
 import type { Coach } from '../src/server/coach.ts';
 import type {
@@ -198,6 +205,14 @@ class FakeEd implements EdClient {
   }
   async mailFile(): Promise<EdFile> {
     return { type: 'application/pdf', name: 'convocation.pdf', body: Buffer.from('%PDF-1.4 test') };
+  }
+  docsCalls = 0;
+  async documents(): Promise<EdDocument[]> {
+    this.docsCalls++;
+    return [{ id: '77', name: 'Bulletin T1', date: '2026-01-20', kind: 'bulletin', childId: '1:11' }];
+  }
+  async documentFile(id: string): Promise<EdFile> {
+    return { type: 'application/pdf', name: 'piece-jointe', body: Buffer.from('%PDF-1.4 bulletin ' + id) };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const base = { when: '', justified: null, by: '', comment: '' };
@@ -760,7 +775,7 @@ test('clé API Claude réglable par le parent administrateur, chiffrée et jamai
   }
 });
 
-test('séances, notifications : élève limité à son contenu, abonnement lié à l’appareil, retiré au verrouillage', async () => {
+test('séances, documents, notifications : élève limité à son contenu, liens signés, abonnement lié à l’appareil', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
   const app = await start(dir);
   try {
@@ -783,6 +798,21 @@ test('séances, notifications : élève limité à son contenu, abonnement lié 
     assert.equal((await kid.post('/api/lessons', { childId: '1:12', date: yesterday })).status, 404);
     assert.equal((await kid.post('/api/lessons', { childId: '1:11', date: '2020-01-01' })).status, 400);
     assert.equal((await kid.post('/api/lessons', { childId: '1:11', date: '../x' })).status, 400);
+
+    // Documents : parents seulement, lien signé pour la route des documents uniquement.
+    assert.equal((await kid.post('/api/documents', {})).status, 403);
+    s = await parent.post('/api/documents', {});
+    assert.equal(s.body.unavailable, false);
+    assert.equal(s.body.items[0].name, 'Bulletin T1');
+    const docUrl = s.body.items[0].url as string;
+    assert.match(docUrl, /^\/api\/document\/file\?t=/);
+    const port = (app.server.address() as AddressInfo).port;
+    const doc = await fetch(`http://127.0.0.1:${port}${docUrl}`);
+    assert.equal(doc.status, 200);
+    assert.match(doc.headers.get('content-disposition') ?? '', /Bulletin T1\.pdf/);
+    assert.match(await doc.text(), /bulletin 77/);
+    const asMail = await fetch(`http://127.0.0.1:${port}${docUrl.replace('/api/document/', '/api/message/')}`);
+    assert.notEqual(asMail.status, 200, 'un lien de document n’ouvre pas une pièce jointe');
 
     // Notifications : clé publique seule, abonnement validé et lié à l'appareil.
     assert.equal((await app.browser().get('/api/push')).status, 401);

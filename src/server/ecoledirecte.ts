@@ -42,6 +42,7 @@ import type {
   Homework,
   HomeworkPage,
   Course,
+  DocKind,
   LifeEvent,
   LifeKind,
   Lesson,
@@ -68,6 +69,14 @@ export interface EdMail {
 
 export interface EdMailDetail extends EdMail {
   text: string;
+}
+
+export interface EdDocument {
+  id: string;
+  name: string;
+  date: string;
+  kind: DocKind;
+  childId: string | null;
 }
 
 export interface EdFile {
@@ -769,11 +778,50 @@ export class EcoleDirecte {
   async mailFile(fileId: string): Promise<EdFile> {
     if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
     if (!/^\d{1,12}$/.test(fileId)) throw new EdError('Pièce jointe introuvable.', 404);
-    const response = await this.send(
+    return this.download(
       `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
-      { forceDownload: 0 },
-      false,
     );
+  }
+
+  /**
+   * Documents de l'année (bulletins, vie scolaire, administratifs, factures) du compte famille.
+   * Les élèves sont rattachés par `idEleve` ; un document sans élève reconnu reste « famille ».
+   */
+  documents(): Promise<EdDocument[]> {
+    return this.forFamily(async () => {
+      const students = new Map<string, string>();
+      for (const account of this.accounts)
+        for (const s of account.typeCompte === 'E' ? [account] : records<RawStudent>(account.profile?.eleves))
+          students.set(String(s.id), `${account.id}:${s.id}`);
+      let last: unknown;
+      for (const path of ['familledocuments.awp?archive=&verbe=get', 'elevesDocuments.awp?archive=&verbe=get']) {
+        try {
+          const body = await this.request<unknown>(path, {});
+          if (Number(body.code) !== 200) throw new EdError('Documents indisponibles.');
+          return normalizeDocuments(body.data, students);
+        } catch (e) {
+          if ((e as EdError).status === 401) throw e;
+          last = e;
+        }
+      }
+      throw last instanceof EdError ? last : new EdError('Documents indisponibles.');
+    });
+  }
+
+  /** Télécharge un document de `documents()` (type de fichier non documenté : deux variantes essayées). */
+  async documentFile(id: string): Promise<EdFile> {
+    if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
+    if (!/^\d{1,12}$/.test(id)) throw new EdError('Document introuvable.', 404);
+    try {
+      return await this.download(`telechargement.awp?verbe=get&fichierId=${id}&leTypeDeFichier=NODEVOIR`);
+    } catch (e) {
+      if ((e as EdError).status !== 404) throw e;
+      return this.download(`telechargement.awp?verbe=get&fichierId=${id}`);
+    }
+  }
+
+  private async download(query: string): Promise<EdFile> {
+    const response = await this.send(query, { forceDownload: 0 }, false);
     const type = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0]?.trim() ?? '';
     if (/json|text\/html/i.test(type)) {
       let code: unknown;
@@ -784,7 +832,7 @@ export class EcoleDirecte {
         this.clear();
         throw new EdError('Votre session a expiré. Reconnectez-vous.', 401, code);
       }
-      throw new EdError('Pièce jointe indisponible sur ÉcoleDirecte.', 404);
+      throw new EdError('Fichier indisponible sur ÉcoleDirecte.', 404);
     }
     const limit = 20 * 1024 * 1024;
     if (Number(response.headers.get('content-length') || 0) > limit)
@@ -1045,6 +1093,37 @@ function noteSubject(note: RawNote, periods: RawPeriod[]) {
     subSubject,
     subject: subSubject && subSubject !== parentSubject ? `${parentSubject} · ${subSubject}` : parentSubject,
   };
+}
+
+const DOC_KINDS: [string, DocKind][] = [
+  ['notes', 'bulletin'],
+  ['viescolaire', 'vie'],
+  ['administratifs', 'admin'],
+  ['inscriptions', 'admin'],
+  ['factures', 'facture'],
+];
+
+/** Rubriques de `familledocuments.awp` aplaties, du plus récent au plus ancien. */
+export function normalizeDocuments(data: unknown, students: Map<string, string>): EdDocument[] {
+  if (!data || typeof data !== 'object') return [];
+  const out: EdDocument[] = [];
+  for (const [field, kind] of DOC_KINDS)
+    for (const d of records<{ id?: Id; libelle?: string; date?: string; idEleve?: Id }>(
+      (data as Record<string, unknown>)[field],
+    )) {
+      const id = String(d.id ?? '');
+      if (!/^\d{1,12}$/.test(id)) continue;
+      out.push({
+        id,
+        name: String(d.libelle || 'Document')
+          .trim()
+          .slice(0, 200),
+        date: /^\d{4}-\d{2}-\d{2}/.test(String(d.date)) ? String(d.date).slice(0, 10) : '',
+        kind,
+        childId: d.idEleve != null ? (students.get(String(d.idEleve)) ?? null) : null,
+      });
+    }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Séances d'un jour : seules celles dont le professeur a rempli le contenu ou joint un document. */

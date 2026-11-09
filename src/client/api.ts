@@ -7,6 +7,7 @@ import type {
   AuthResult,
   BagDay,
   ClaudeKeyStatus,
+  DocumentList,
   Kit,
   EdStatus,
   FamilyDashboard,
@@ -81,6 +82,7 @@ export const api = {
   share: (key: string, childIds: string[]) =>
     call<{ sharedWith: string[] }>('POST', '/api/message/share', { key, childIds }),
   schoolLife: (childId: string, refresh = false) => call<SchoolLife>('POST', '/api/schoollife', { childId, refresh }),
+  documents: (refresh = false) => call<DocumentList>('POST', '/api/documents', { refresh }),
   lessons: (childId: string, date: string) =>
     call<{ date: string; lessons: Lesson[] }>('POST', '/api/lessons', { childId, date }),
   push: {

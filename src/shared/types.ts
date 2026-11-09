@@ -428,3 +428,23 @@ export interface PushStatus {
   devices: number;
   prefs: PushPrefs;
 }
+
+export type DocKind = 'bulletin' | 'vie' | 'admin' | 'facture';
+
+/** Document publié par l'établissement (bulletins, certificats…), visible des parents seulement. */
+export interface SchoolDocument {
+  id: string;
+  name: string;
+  date: string;
+  kind: DocKind;
+  /** Élève concerné (`compte:élève`), ou `null` pour un document de la famille. */
+  childId: string | null;
+  /** Lien signé, valable quelques minutes sur cet appareil. */
+  url?: string;
+}
+
+export interface DocumentList {
+  items: SchoolDocument[];
+  /** ÉcoleDirecte n'a pas répondu ou refuse cette rubrique pour ce compte. */
+  unavailable: boolean;
+}

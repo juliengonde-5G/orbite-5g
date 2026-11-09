@@ -26,6 +26,7 @@
 import {
   EcoleDirecte,
   EdError,
+  type EdDocument,
   type EdFile,
   type EdMail,
   type EdMailDetail,
@@ -57,6 +58,8 @@ export interface EdClient {
   homeworkForChild(childId: string, options: { cursor: number | null }): Promise<HomeworkPage>;
   timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
   lessonsForChild(childId: string, date: string): Promise<Lesson[]>;
+  documents(): Promise<EdDocument[]>;
+  documentFile(id: string): Promise<EdFile>;
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
   mailbox(childId: string | null): Promise<EdMail[]>;
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
@@ -118,6 +121,7 @@ export class EdService {
   private homeworkCache = new Map<string, { time: number; value: HomeworkPage }>();
   private timetableCache = new Map<string, { time: number; value: Course[] }>();
   private lessonCache = new Map<string, { time: number; value: Lesson[] }>();
+  private docCache: { time: number; value: EdDocument[] } | null = null;
   private infoCache = new Map<string, { time: number; value: SchoolInfo[] }>();
   private mailCache = new Map<string, { time: number; value: EdMail[] }>();
   private mailDetails = new Map<string, { time: number; value: EdMailDetail }>();
@@ -242,6 +246,7 @@ export class EdService {
     this.homeworkCache.clear();
     this.timetableCache.clear();
     this.lessonCache.clear();
+    this.docCache = null;
     this.infoCache.clear();
     this.mailCache.clear();
     this.mailDetails.clear();
@@ -382,6 +387,20 @@ export class EdService {
       if (this.timetableCache.size > 60) this.timetableCache.delete(this.timetableCache.keys().next().value as string);
       return value;
     });
+  }
+
+  /** Documents du compte famille (cache 30 min). */
+  documents(maxAge = 30 * 60000): Promise<EdDocument[]> {
+    return this.serial(async () => {
+      if (this.docCache && Date.now() - this.docCache.time < Math.max(maxAge, this.floor)) return this.docCache.value;
+      const value = await this.call((c) => c.documents());
+      this.docCache = { time: Date.now(), value };
+      return value;
+    });
+  }
+
+  documentFile(id: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.documentFile(id)));
   }
 
   /** Contenu des séances d'un jour passé (cache 30 min). */

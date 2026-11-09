@@ -3407,3 +3407,17 @@ button {
     }
   }
 }
+
+/* ---------- Documents ---------- */
+.doc-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  small {
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+}
+.doc-row .mail-file-icon {
+  color: var(--accent);
+}

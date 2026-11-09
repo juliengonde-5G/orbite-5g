@@ -18,6 +18,7 @@ import { childColor, familyHome, gradesView, studentHome, tasksView, type Action
 import { lifeView } from './life-view.ts';
 import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
+import { docsView } from './docs-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -33,6 +34,7 @@ const HASH: Record<Route, string> = {
   message: 'message',
   life: 'vie-scolaire',
   recap: 'recap',
+  docs: 'documents',
   me: 'moi',
 };
 
@@ -537,6 +539,7 @@ function currentView(): HTMLElement {
   if (state.route === 'home' && me.role === 'parent') return familyHome(actions);
   if (state.route === 'messages') return messagesView(actions);
   if (state.route === 'recap' && me.role === 'parent') return recapView(actions);
+  if (state.route === 'docs' && me.role === 'parent') return docsView(actions);
   if (state.route === 'message' && state.mailOpen) return messageView(state.mailOpen, actions);
   const child = children.find((c) => c.id === state.selected) ?? children[0];
   if (!child) return familyHome(actions);
@@ -587,6 +590,7 @@ function render(): void {
       state.route === 'me' ||
       state.route === 'home' ||
       state.route === 'recap' ||
+      state.route === 'docs' ||
       state.route === 'messages' ||
       state.route === 'message' ||
       state.session.me.role !== 'parent' ||

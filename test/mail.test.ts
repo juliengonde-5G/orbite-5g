@@ -8,6 +8,8 @@ import {
   EcoleDirecte,
   dispositionName,
   htmlText,
+  normalizeDocuments,
+  normalizeLessons,
   normalizeMail,
   normalizeSchoolLife,
   schoolYear,
@@ -134,4 +136,52 @@ test('vie scolaire : types, justification, réglages de l’établissement respe
   assert.equal(punition?.when, 'S’est déroulé le mer. 08 décembre de 13:00 à 14:00');
   assert.equal(life.events[2]?.comment, '', 'commentaire d’absence masqué');
   assert.deepEqual(normalizeSchoolLife(null), { events: [] });
+});
+
+test('documents : rubriques aplaties, élève rattaché, identifiants invalides écartés', () => {
+  const students = new Map([['11', '1:11']]);
+  const docs = normalizeDocuments(
+    {
+      notes: [{ id: 5, libelle: 'Bulletin T1', date: '2026-01-20', idEleve: 11 }],
+      administratifs: [
+        { id: '6', libelle: 'Certificat', date: '2025-09-02 10:00', idEleve: 99 },
+        { id: '../x', libelle: 'Piège' },
+        null,
+      ],
+      factures: [{ id: 7, libelle: '', date: 'n/a' }],
+      inconnu: [{ id: 8 }],
+    },
+    students,
+  );
+  assert.deepEqual(
+    docs.map((d) => [d.id, d.kind, d.childId, d.date]),
+    [
+      ['5', 'bulletin', '1:11', '2026-01-20'],
+      ['6', 'admin', null, '2025-09-02'],
+      ['7', 'facture', null, ''],
+    ],
+  );
+  assert.equal(docs[2]?.name, 'Document');
+  assert.deepEqual(normalizeDocuments(null, students), []);
+});
+
+test('contenu de séance : texte décodé, documents, séances vides écartées', () => {
+  const lessons = normalizeLessons('2026-11-05', [
+    {
+      id: 1,
+      matiere: 'MATHÉMATIQUES',
+      nomProf: ' par M. DURAND',
+      contenuDeSeance: { contenu: b64('<p>Chapitre <b>4</b></p>') },
+    },
+    { id: 2, matiere: 'SVT', contenuDeSeance: { contenu: '', documents: [{ libelle: 'TP.pdf' }] } },
+    { id: 3, matiere: 'EPS', aFaire: { contenu: b64('Courir') } },
+    'x',
+  ]);
+  assert.deepEqual(
+    lessons.map((l) => [l.id, l.subject, l.teacher, l.text, l.documents]),
+    [
+      ['2026-11-05:1', 'MATHÉMATIQUES', 'M. DURAND', 'Chapitre 4', []],
+      ['2026-11-05:2', 'SVT', '', '', ['TP.pdf']],
+    ],
+  );
 });

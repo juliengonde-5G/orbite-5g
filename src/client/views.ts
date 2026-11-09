@@ -23,6 +23,7 @@ import { progressChart } from './chart.ts';
 import { bagKey } from './bag-view.ts';
 import { familyLifeBlock, lifeCard, lifeFacts } from './life-view.ts';
 import { lessonsBody, weekStrip } from './class-view.ts';
+import { familyDocsBlock } from './docs-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
@@ -556,6 +557,7 @@ export function familyHome(actions: Actions): HTMLElement {
         icon('next', 18),
       ),
       familyMailBlock(actions),
+      familyDocsBlock(actions),
       familyLifeBlock(children, actions),
       alertsBlock(children, actions),
       feed.length > 0 &&

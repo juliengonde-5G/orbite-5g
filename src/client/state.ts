@@ -4,6 +4,8 @@
  */
 import type {
   BagDay,
+  DocKind,
+  DocumentList,
   FamilyDashboard,
   Homework,
   HomeworkDate,
@@ -16,7 +18,18 @@ import type {
 } from '../shared/types.ts';
 
 export type Route =
-  'home' | 'child' | 'bag' | 'tasks' | 'grades' | 'progress' | 'messages' | 'message' | 'life' | 'recap' | 'me';
+  | 'home'
+  | 'child'
+  | 'bag'
+  | 'tasks'
+  | 'grades'
+  | 'progress'
+  | 'messages'
+  | 'message'
+  | 'life'
+  | 'recap'
+  | 'docs'
+  | 'me';
 
 export interface HomeworkState {
   items: Homework[];
@@ -75,6 +88,9 @@ export const state = {
   /** Messages non lus de la boîte principale, pour la pastille de l'onglet. */
   unread: 0,
   lives: new Map<string, Loadable<SchoolLife>>(),
+  /** Documents de l'établissement (parents). */
+  docs: { value: null, loading: false, error: null } as Loadable<DocumentList>,
+  docsKind: 'all' as 'all' | DocKind,
   /** Contenu des séances, par `élève|date`. */
   lessons: new Map<string, Loadable<Lesson[]>>(),
   /** Onglet Devoirs : à faire ou « en classe ». */
@@ -105,6 +121,8 @@ export function resetData(): void {
   state.mailDetail.clear();
   state.lives.clear();
   state.lessons.clear();
+  state.docs = { value: null, loading: false, error: null };
+  state.docsKind = 'all';
   state.tasksMode = 'todo';
   state.taskDay = null;
   state.lessonDay = null;
