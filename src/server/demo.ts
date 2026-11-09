@@ -6,7 +6,7 @@
  * aucune donnée réelle. N'importe quel identifiant est accepté, sans question.
  */
 import { parisDate } from '../shared/metrics.ts';
-import type { Factor, SavedAuth } from './ecoledirecte.ts';
+import type { EdFile, EdMail, EdMailDetail, Factor, SavedAuth } from './ecoledirecte.ts';
 import type { EdClient } from './ed-service.ts';
 import type {
   AuthResult,
@@ -18,6 +18,7 @@ import type {
   HomeworkPage,
   Note,
   SchoolInfo,
+  SchoolLife,
 } from '../shared/types.ts';
 
 const SUBJECTS = [
@@ -54,6 +55,82 @@ function day(offset: number): string {
   d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
 }
+
+/** Messages fictifs : quatre pour la famille, deux par élève. */
+function demoMails(childId: string | null): EdMailDetail[] {
+  const at = (offset: number, time: string) => `${day(offset)}T${time}`;
+  if (childId === null)
+    return [
+      {
+        id: '501',
+        subject: 'Rencontres parents-professeurs de 5e',
+        from: 'Mme Durand · Principale adjointe',
+        fromRole: 'staff',
+        date: at(-1, '17:42'),
+        read: false,
+        files: [{ id: '9001', name: 'Planning-des-rencontres.pdf' }],
+        text: 'Madame, Monsieur,\nLes rencontres parents-professeurs de 5e auront lieu jeudi de 17 h à 20 h.\nLe planning des rendez-vous est joint à ce message. Merci de réserver un créneau sur ÉcoleDirecte.\nCordialement,\nLa direction',
+      },
+      {
+        id: '502',
+        subject: 'Sortie au musée des Beaux-Arts, 6e A',
+        from: 'M. Martin',
+        fromRole: 'teacher',
+        date: at(-3, '12:05'),
+        read: true,
+        files: [{ id: '9002', name: 'Autorisation-de-sortie.pdf' }],
+        text: 'Bonjour,\nLa classe de 6e A visitera le musée des Beaux-Arts mardi prochain.\nDépart 8 h 30 devant le collège, retour pour 12 h.\nMerci de rendre l’autorisation signée avant vendredi.\nM. Martin, professeur d’arts plastiques',
+      },
+      {
+        id: '503',
+        subject: 'Absence non justifiée',
+        from: 'Vie scolaire · CPE',
+        fromRole: 'staff',
+        date: at(-6, '10:15'),
+        read: true,
+        files: [],
+        text: 'Bonjour,\nUne absence de deux heures n’a pas encore été justifiée. Merci de le faire depuis ÉcoleDirecte.\nLa vie scolaire',
+      },
+      {
+        id: '504',
+        subject: 'Menus de la cantine jusqu’aux vacances',
+        from: 'Intendance',
+        fromRole: 'staff',
+        date: at(-9, '08:30'),
+        read: true,
+        files: [{ id: '9003', name: 'Menus-novembre.pdf' }],
+        text: 'Vous trouverez ci-joint les menus jusqu’aux vacances, également affichés à l’entrée du self.',
+      },
+    ];
+  const n = Number(childId.slice(-1)) || 1;
+  return [
+    {
+      id: `6${n}1`,
+      subject: 'Devoir maison à rendre vendredi',
+      from: 'Mme Bernard',
+      fromRole: 'teacher',
+      date: at(-2, '18:20'),
+      read: false,
+      files: [{ id: `91${n}1`, name: 'DM-chapitre-4.pdf' }],
+      text: 'Bonjour à tous,\nLe devoir maison du chapitre 4 est à rendre vendredi, sur copie double.\nPensez à soigner la rédaction.\nMme Bernard',
+    },
+    {
+      id: `6${n}2`,
+      subject: 'Club robotique : inscriptions ouvertes',
+      from: 'M. Moreau',
+      fromRole: 'teacher',
+      date: at(-5, '13:10'),
+      read: true,
+      files: [],
+      text: 'Le club robotique reprend le jeudi de 12 h 30 à 13 h 30, salle 204.\nInscriptions auprès de M. Moreau avant la fin de la semaine.',
+    },
+  ];
+}
+
+/** Petit PDF valide d'une page, servi pour toutes les pièces jointes de démonstration. */
+const DEMO_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 52>>stream\nBT /F1 18 Tf 30 60 Td (Orbite - piece jointe) Tj ET\nendstream\nendobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+);
 
 function student(id: string, name: string, className: string, level: number, drift: number, seed: number): Child {
   const rand = seeded(seed);
@@ -201,6 +278,91 @@ export class DemoEd implements EdClient {
         to: day(10),
       },
     ];
+  }
+  async mailbox(childId: string | null): Promise<EdMail[]> {
+    return demoMails(childId).map(({ text: _text, ...m }) => m);
+  }
+  async mail(childId: string | null, id: string): Promise<EdMailDetail> {
+    const found = demoMails(childId).find((m) => m.id === id);
+    if (!found) throw new Error('Message introuvable.');
+    return found;
+  }
+  async mailFile(fileId: string): Promise<EdFile> {
+    return { type: 'application/pdf', name: `piece-${fileId}.pdf`, body: DEMO_PDF };
+  }
+  async schoolLifeForChild(childId: string): Promise<SchoolLife> {
+    const n = Number(childId.slice(-1));
+    const base = { by: '', comment: '', todo: '', reason: '', justified: null as boolean | null };
+    if (n === 1)
+      return {
+        events: [
+          {
+            ...base,
+            id: 'se-1',
+            kind: 'punition',
+            type: 'Punition',
+            title: 'Retenue',
+            date: day(-4),
+            when: 'Mercredi de 13 h à 14 h',
+            reason: 'Oublis répétés du matériel de sport',
+            todo: '1 heure',
+            by: 'M. Durand',
+          },
+          {
+            ...base,
+            id: 'ar-1',
+            kind: 'retard',
+            type: 'Retard',
+            title: '10 min',
+            date: day(-8),
+            when: 'de 08:00 à 08:10',
+            reason: 'Bus en retard',
+            justified: true,
+          },
+          {
+            ...base,
+            id: 'ar-2',
+            kind: 'absence',
+            type: 'Absence',
+            title: '2 cours',
+            date: day(-15),
+            when: 'de 14:30 à 16:30',
+            reason: '',
+            justified: false,
+          },
+        ],
+      };
+    if (n === 2)
+      return {
+        events: [
+          {
+            ...base,
+            id: 'se-2',
+            kind: 'encouragement',
+            type: 'Encouragement',
+            title: 'Félicitations',
+            date: day(-12),
+            when: '',
+            reason: 'Très bon investissement en classe',
+            by: 'Mme Petit',
+          },
+        ],
+      };
+    return {
+      events: [
+        {
+          ...base,
+          id: 'ar-3',
+          kind: 'absence',
+          type: 'Absence',
+          title: '1 demi-journée',
+          date: day(-20),
+          when: 'matin',
+          reason: 'Rendez-vous médical',
+          justified: true,
+        },
+      ],
+    };
   }
   exportSession(): SavedAuth | null {
     return this.state === 'authenticated' ? { version: 1, token: 'demo', cookies: [], accounts: [] } : null;

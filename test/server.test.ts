@@ -15,10 +15,22 @@ import type { AddressInfo } from 'node:net';
 import { request } from 'node:http';
 import { createApp } from '../src/server/server.ts';
 import { Vault } from '../src/server/vault.ts';
-import { EdError, type Factor } from '../src/server/ecoledirecte.ts';
+import { EdError, type EdFile, type EdMail, type EdMailDetail, type Factor } from '../src/server/ecoledirecte.ts';
 import type { EdClient } from '../src/server/ed-service.ts';
 import type { Coach } from '../src/server/coach.ts';
-import type { AuthResult, AuthState, Course, Dashboard, HomeworkPage, Note, SchoolInfo } from '../src/shared/types.ts';
+import type {
+  AuthResult,
+  AuthState,
+  Course,
+  Dashboard,
+  HomeworkPage,
+  Note,
+  SchoolInfo,
+  SchoolLife,
+} from '../src/shared/types.ts';
+
+/** Hier à 10 h, au format des messages : toujours « récent » quel que soit le jour du test. */
+const yesterday = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10) + 'T10:00';
 
 const note = (id: number, value: number, date: string, subject = 'Maths'): Note => ({
   id,
@@ -75,8 +87,8 @@ class FakeEd implements EdClient {
       demo: false,
       updatedAt: new Date().toISOString(),
       children: [
-        { id: '1:11', name: 'Ilan', className: '5e B', notes: FakeEd.notes['1:11'] ?? [], periods: [] },
-        { id: '1:12', name: 'Sacha', className: '6e A', notes: FakeEd.notes['1:12'] ?? [], periods: [] },
+        { id: '1:11', name: 'Léo', className: '5e B', notes: FakeEd.notes['1:11'] ?? [], periods: [] },
+        { id: '1:12', name: 'Nina', className: '6e A', notes: FakeEd.notes['1:12'] ?? [], periods: [] },
       ],
     };
   }
@@ -147,6 +159,61 @@ class FakeEd implements EdClient {
   async schoolInfosForChild(): Promise<SchoolInfo[]> {
     return [{ id: '1', text: 'Sortie au musée', from: null, to: null }];
   }
+  async mailbox(childId: string | null): Promise<EdMail[]> {
+    if (childId === '1:12') throw new EdError('ÉcoleDirecte a refusé la demande (code 403).', 400);
+    if (childId === null)
+      return [
+        {
+          id: '10',
+          subject: 'Réunion de rentrée',
+          from: 'Direction',
+          fromRole: 'staff',
+          date: yesterday(),
+          read: false,
+          files: [{ id: '77', name: 'convocation.pdf' }],
+        },
+        {
+          id: '11',
+          subject: 'Avertissement',
+          from: 'CPE',
+          fromRole: 'staff',
+          date: yesterday(),
+          read: true,
+          files: [],
+        },
+      ];
+    return [{ id: '20', subject: 'DM', from: 'Mme B', fromRole: 'teacher', date: yesterday(), read: false, files: [] }];
+  }
+  /** Comme le compte parent sur ÉcoleDirecte : n'importe quel identifiant s'ouvre, quelle que soit la boîte demandée. */
+  async mail(_childId: string | null, id: string): Promise<EdMailDetail> {
+    const all = [...(await this.mailbox(null)), ...(await this.mailbox('1:11'))];
+    const found = all.find((m) => m.id === id);
+    if (!found) throw new EdError('Message introuvable.', 404);
+    return { ...found, text: 'Bonjour' };
+  }
+  async mailFile(): Promise<EdFile> {
+    return { type: 'application/pdf', name: 'convocation.pdf', body: Buffer.from('%PDF-1.4 test') };
+  }
+  async schoolLifeForChild(childId: string): Promise<SchoolLife> {
+    const base = { when: '', justified: null, by: '', comment: '' };
+    return {
+      events:
+        childId === '1:11'
+          ? [
+              {
+                ...base,
+                id: 'se-1',
+                kind: 'punition',
+                type: 'Punition',
+                title: 'Retenue',
+                date: '2026-11-05',
+                reason: 'Bavardages',
+                todo: '1 heure',
+              },
+            ]
+          : [],
+    };
+  }
   exportSession() {
     return this.state === 'authenticated' ? { version: 1 as const, token: 't', cookies: [], accounts: [] } : null;
   }
@@ -166,7 +233,7 @@ interface Client {
   ): Promise<{ status: number; body: any; cookie: string }>;
 }
 
-async function start(dir: string, seed = 'Julien:parent+admin, Ophélie:parent, Ilan:enfant:5e, Sacha:enfant:6e') {
+async function start(dir: string, seed = 'Camille:parent+admin, Alex:parent, Léo:enfant:5e, Nina:enfant:6e') {
   const server = createApp({
     vault: new Vault(dir),
     familySeed: seed,
@@ -215,12 +282,12 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
   FakeEd.logins = [];
   const app = await start(dir);
   try {
-    const julien = app.browser();
-    let s = await julien.get('/api/session');
+    const parentPhone = app.browser();
+    let s = await parentPhone.get('/api/session');
     assert.equal(s.body.setupNeeded, true);
     assert.equal(s.body.members.length, 4);
     const admin = s.body.members.find((m: any) => m.admin);
-    assert.equal(admin.name, 'Julien');
+    assert.equal(admin.name, 'Camille');
 
     // Depuis Internet : prénoms masqués et installation refusée.
     const stranger = app.browser();
@@ -232,82 +299,82 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
     assert.equal(s.status, 403);
 
     // PIN trop simple refusé, puis installation depuis la maison.
-    s = await julien.post('/api/setup', { memberId: admin.id, pin: '123456' });
+    s = await parentPhone.post('/api/setup', { memberId: admin.id, pin: '123456' });
     assert.equal(s.status, 400);
-    s = await julien.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    s = await parentPhone.post('/api/setup', { memberId: admin.id, pin: '482916' });
     assert.equal(s.status, 200);
-    assert.equal(s.body.me.name, 'Julien');
+    assert.equal(s.body.me.name, 'Camille');
     assert.equal(s.body.setupNeeded, false);
 
     // Connexion ÉcoleDirecte avec question de sécurité.
-    s = await julien.post('/api/admin/ed/connect', { username: 'parent.gonde', password: 'bon', remember: true });
+    s = await parentPhone.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
     assert.equal(s.body.state, 'question');
-    s = await julien.post('/api/admin/ed/verify', { choice: 0 });
+    s = await parentPhone.post('/api/admin/ed/verify', { choice: 0 });
     assert.equal(s.body.state, 'authenticated');
-    s = await julien.get('/api/session');
+    s = await parentPhone.get('/api/session');
     assert.equal(s.body.ed.link, 'connected');
-    assert.equal(s.body.ed.account, 'pa•••de');
+    assert.equal(s.body.ed.account, 'pa•••nt');
     assert.equal(s.body.ed.autoReconnect, true);
 
     // Le parent voit les deux élèves ; le rattachement par prénom est automatique.
-    s = await julien.post('/api/data', {});
+    s = await parentPhone.post('/api/data', {});
     assert.deepEqual(
       s.body.children.map((c: any) => c.name),
-      ['Ilan', 'Sacha'],
+      ['Léo', 'Nina'],
     );
-    s = await julien.get('/api/admin/members');
-    const ilan = s.body.members.find((m: any) => m.name === 'Ilan');
-    assert.equal(ilan.studentId, '1:11');
+    s = await parentPhone.get('/api/admin/members');
+    const leo = s.body.members.find((m: any) => m.name === 'Léo');
+    assert.equal(leo.studentId, '1:11');
 
-    // Activation du profil d'Ilan par code à usage unique.
-    s = await julien.post('/api/admin/member/code', { memberId: ilan.id });
+    // Activation du profil d'Léo par code à usage unique.
+    s = await parentPhone.post('/api/admin/member/code', { memberId: leo.id });
     const code = s.body.code as string;
     assert.match(code, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    const ilanPhone = app.browser();
-    s = await ilanPhone.post('/api/activate', { name: 'ilan', code: 'ZZZZ-ZZZZ', pin: '730519' }, internet);
+    const leoPhone = app.browser();
+    s = await leoPhone.post('/api/activate', { name: 'leo', code: 'ZZZZ-ZZZZ', pin: '730519' }, internet);
     assert.equal(s.status, 403);
-    s = await ilanPhone.post('/api/activate', { name: 'ilan', code: code.toLowerCase(), pin: '730519' }, internet);
+    s = await leoPhone.post('/api/activate', { name: 'leo', code: code.toLowerCase(), pin: '730519' }, internet);
     assert.equal(s.status, 200);
     assert.equal(s.body.me.role, 'child');
     // Appareil reconnu : les prénoms s'affichent désormais hors de la maison.
-    s = await ilanPhone.get('/api/session', internet);
+    s = await leoPhone.get('/api/session', internet);
     assert.equal(s.body.members.length, 4);
     // Code consommé.
-    s = await app.browser().post('/api/activate', { memberId: ilan.id, code, pin: '730519' });
+    s = await app.browser().post('/api/activate', { memberId: leo.id, code, pin: '730519' });
     assert.equal(s.status, 403);
 
-    // Ilan ne voit que lui et n'accède ni aux devoirs de Sacha ni à l'administration.
-    s = await ilanPhone.post('/api/data', {});
+    // Léo ne voit que lui et n'accède ni aux devoirs de Nina ni à l'administration.
+    s = await leoPhone.post('/api/data', {});
     assert.deepEqual(
       s.body.children.map((c: any) => c.id),
       ['1:11'],
     );
     assert.equal(s.body.ed, undefined);
-    s = await ilanPhone.post('/api/homework', { childId: '1:12' });
+    s = await leoPhone.post('/api/homework', { childId: '1:12' });
     assert.equal(s.status, 404);
-    s = await ilanPhone.post('/api/homework', { childId: '1:11' });
+    s = await leoPhone.post('/api/homework', { childId: '1:11' });
     assert.equal(s.body.homework.length, 1);
-    s = await ilanPhone.post('/api/admin/ed/disconnect', {});
+    s = await leoPhone.post('/api/admin/ed/disconnect', {});
     assert.equal(s.status, 403);
-    s = await ilanPhone.get('/api/admin/members');
+    s = await leoPhone.get('/api/admin/members');
     assert.equal(s.status, 403);
-    s = await ilanPhone.get('/api/session');
+    s = await leoPhone.get('/api/session');
     assert.equal(s.body.ed, null);
 
     // Case « fait » partagée avec les parents.
-    s = await ilanPhone.post('/api/check', { childId: '1:11', homeworkId: '2026-11-10:111', done: true });
+    s = await leoPhone.post('/api/check', { childId: '1:11', homeworkId: '2026-11-10:111', done: true });
     assert.deepEqual(s.body.checks, ['2026-11-10:111']);
-    s = await julien.post('/api/data', {});
+    s = await parentPhone.post('/api/data', {});
     assert.deepEqual(s.body.checks['1:11'], ['2026-11-10:111']);
 
     // Conseil IA limité à l'élève autorisé.
-    s = await ilanPhone.post('/api/coaching', { childId: '1:11' });
+    s = await leoPhone.post('/api/coaching', { childId: '1:11' });
     assert.equal(s.body.text, 'Continue comme ça en maths.');
-    s = await ilanPhone.post('/api/coaching', { childId: '1:12' });
+    s = await leoPhone.post('/api/coaching', { childId: '1:12' });
     assert.equal(s.status, 404);
 
     // Protections HTTP.
-    s = await julien.post('/api/data', {}, { 'x-orbite-client': '0' });
+    s = await parentPhone.post('/api/data', {}, { 'x-orbite-client': '0' });
     assert.equal(s.status, 403);
     const status = await new Promise<number>((resolve) => {
       const req = request(
@@ -344,7 +411,7 @@ test('installation, droits des profils et connexion ÉcoleDirecte partagée', as
     });
     assert.equal(proxied.status, 200);
     assert.equal(JSON.parse(proxied.body).onLan, false);
-    s = await julien.post('/api/data', {}, { origin: 'https://evil.example' });
+    s = await parentPhone.post('/api/data', {}, { origin: 'https://evil.example' });
     assert.equal(s.status, 403);
   } finally {
     await app.close();
@@ -383,7 +450,7 @@ test('reconnexion automatique avec les facteurs de confiance et persistance au r
   try {
     const admin = (await b.get('/api/session')).body.members.find((m: any) => m.admin);
     await b.post('/api/setup', { memberId: admin.id, pin: '482916' });
-    await b.post('/api/admin/ed/connect', { username: 'parent.gonde', password: 'bon', remember: true });
+    await b.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
     await b.post('/api/admin/ed/verify', { choice: 0 });
     let s = await b.post('/api/data', {});
     assert.equal(s.body.children.length, 2);
@@ -412,7 +479,7 @@ test('reconnexion automatique avec les facteurs de confiance et persistance au r
   try {
     const again = app.browser(b.jar());
     const s = await again.get('/api/session');
-    assert.equal(s.body.me.name, 'Julien');
+    assert.equal(s.body.me.name, 'Camille');
     assert.equal(s.body.ed.link, 'connected');
     assert.equal(s.body.members.length, 4);
   } finally {
@@ -449,7 +516,7 @@ test('installation à distance avec le code du journal, à usage unique', async 
     const formatted = code.slice(0, 4).toLowerCase() + '-' + code.slice(4);
     // Appareil inconnu hors de la maison : prénoms masqués, installation par le prénom.
     assert.deepEqual((await phone.get('/api/session', internet)).body.members, []);
-    let s = await phone.post('/api/setup', { name: 'julien', pin: '482916', code: formatted }, internet);
+    let s = await phone.post('/api/setup', { name: 'camille', pin: '482916', code: formatted }, internet);
     assert.equal(s.status, 200);
     assert.equal(s.body.me.admin, true);
     assert.equal(new Vault(dir).load<{ setupCode?: string }>('secret', {}).setupCode, undefined);
@@ -468,7 +535,7 @@ test('cartable : cours du jour, sac sans doublon ni cours annulé, cases et mat�
     const b = app.browser();
     const admin = (await b.get('/api/session')).body.members.find((m: any) => m.admin);
     await b.post('/api/setup', { memberId: admin.id, pin: '482916' });
-    await b.post('/api/admin/ed/connect', { username: 'parent.gonde', password: 'bon', remember: true });
+    await b.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
     await b.post('/api/admin/ed/verify', { choice: 0 });
     await b.post('/api/data', {});
     const date = '2026-11-10';
@@ -520,6 +587,104 @@ test('chaque module servi au navigateur trouve ses imports parmi les fichiers se
       }
     }
     assert.ok(seen.has('/shared/bag.js'));
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('messagerie en lecture seule : boîte famille, partage avec un enfant, pièce jointe signée ; vie scolaire', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const app = await start(dir);
+  try {
+    const parent = app.browser();
+    const admin = (await parent.get('/api/session')).body.members.find((m: any) => m.admin);
+    await parent.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    await parent.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
+    await parent.post('/api/admin/ed/verify', { choice: 0 });
+    await parent.post('/api/data', {});
+    const leo = (await parent.get('/api/admin/members')).body.members.find((m: any) => m.name === 'Léo');
+    const code = (await parent.post('/api/admin/member/code', { memberId: leo.id })).body.code;
+    const kid = app.browser();
+    await kid.post('/api/activate', { memberId: leo.id, code, pin: '730519' });
+
+    // Parent : boîte famille complète, nouveautés selon ÉcoleDirecte.
+    let s = await parent.post('/api/messages', {});
+    assert.deepEqual(
+      s.body.items.map((i: any) => i.key),
+      ['f.10', 'f.11'],
+    );
+    assert.equal(s.body.unread, 1);
+    assert.deepEqual(s.body.items[0].sharedWith, []);
+
+    // Enfant : sa propre messagerie élève, rien de la boîte famille tant que rien n'est partagé.
+    s = await kid.post('/api/messages', {});
+    assert.deepEqual(
+      s.body.items.map((i: any) => i.key),
+      ['s.1:11.20'],
+    );
+    assert.equal((await kid.post('/api/message', { key: 'f.10' })).status, 404);
+    assert.equal((await kid.post('/api/messages', { childId: '1:12' })).status, 404);
+    assert.equal((await kid.post('/api/message/share', { key: 'f.10', childIds: ['1:11'] })).status, 403);
+
+    // Le parent partage la réunion avec Léo, pas l'avertissement.
+    s = await parent.post('/api/message/share', { key: 'f.10', childIds: ['1:11', 'inconnu'] });
+    assert.deepEqual(s.body.sharedWith, ['1:11']);
+    s = await kid.post('/api/messages', {});
+    assert.deepEqual(s.body.items.map((i: any) => i.key).sort(), ['f.10', 's.1:11.20']);
+    assert.equal(s.body.unread, 2);
+    assert.equal(s.body.items.find((i: any) => i.key === 'f.10').sharedWith, undefined);
+    assert.equal((await kid.post('/api/message', { key: 'f.11' })).status, 404);
+    // Un identifiant de la boîte famille glissé dans sa propre boîte élève : refusé par Orbite.
+    assert.equal((await kid.post('/api/message', { key: 's.1:11.11' })).status, 404);
+
+    // Ouverture : texte, lien signé de pièce jointe, message marqué comme lu pour ce membre.
+    s = await kid.post('/api/message', { key: 'f.10' });
+    assert.equal(s.body.text, 'Bonjour');
+    const url = s.body.files[0].url as string;
+    assert.match(url, /^\/api\/message\/file\?t=/);
+    s = await kid.post('/api/messages', {});
+    assert.equal(s.body.unread, 1);
+    const port = (app.server.address() as AddressInfo).port;
+    const file = await fetch(`http://127.0.0.1:${port}${url}`);
+    assert.equal(file.status, 200);
+    assert.equal(file.headers.get('content-type'), 'application/pdf');
+    assert.match(file.headers.get('content-disposition') ?? '', /convocation\.pdf/);
+    assert.match(await file.text(), /^%PDF/);
+    const forged = await fetch(`http://127.0.0.1:${port}${url.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'))}`);
+    assert.equal(forged.status, 403);
+    const garbled = await fetch(`http://127.0.0.1:${port}${url.replace(/.{3}$/, '%C3%A9%C3%A9')}`);
+    assert.equal(garbled.status, 403);
+
+    // Partage retiré : le message disparaît pour l'enfant.
+    await parent.post('/api/message/share', { key: 'f.10', childIds: [] });
+    assert.equal((await kid.post('/api/message', { key: 'f.10' })).status, 404);
+    assert.equal((await fetch(`http://127.0.0.1:${port}${url}`)).status, 404);
+    assert.equal((await parent.post('/api/message/share', { key: 'f.999', childIds: ['1:11'] })).status, 404);
+
+    // Lien lié à l'appareil : il ne sert plus une fois le profil verrouillé.
+    const own = (await kid.post('/api/messages', {})).body.items.find((i: any) => i.box === 'student');
+    assert.ok(own);
+    await parent.post('/api/message/share', { key: 'f.10', childIds: ['1:11'] });
+    const again = (await kid.post('/api/message', { key: 'f.10' })).body.files[0].url as string;
+    assert.equal((await fetch(`http://127.0.0.1:${port}${again}`)).status, 200);
+
+    // Boîte élève refusée par l'établissement : message clair, pas d'erreur.
+    s = await parent.post('/api/messages', { childId: '1:12' });
+    assert.equal(s.status, 200);
+    assert.deepEqual(s.body.items, []);
+    assert.match(s.body.unavailable, /messagerie élève/);
+
+    // Vie scolaire : chacun la sienne, les parents tout.
+    s = await parent.post('/api/schoollife', { childId: '1:11' });
+    assert.equal(s.body.events[0].title, 'Retenue');
+    s = await kid.post('/api/schoollife', { childId: '1:11' });
+    assert.equal(s.body.events.length, 1);
+    assert.equal((await kid.post('/api/schoollife', { childId: '1:12' })).status, 404);
+
+    // Profil verrouillé sur cet appareil : le lien de pièce jointe ne sert plus.
+    await kid.post('/api/logout', {});
+    assert.equal((await fetch(`http://127.0.0.1:${port}${again}`)).status, 410);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

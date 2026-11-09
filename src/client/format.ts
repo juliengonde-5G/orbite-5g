@@ -105,3 +105,12 @@ export function subjectLabel(subject: string): string {
     .replace(/(^|·\s*)(\p{L})/gu, (_, sep: string, letter: string) => sep + letter.toUpperCase())
     .replace(/\b(lv\d|eps|svt|emc|ses|nsi|snt|llce|hggsp|dnl)\b/gi, (m) => m.toUpperCase());
 }
+
+const monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** « Novembre 2026 » pour une clé « AAAA-MM ». */
+export const monthYear = (key: string): string => capitalize(monthFmt.format(new Date(key + '-15T12:00:00Z')));
+
+const timeFmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+/** « 18 h 05 » à partir d'une heure locale « HH:MM ». */
+export const clockText = (hhmm: string): string =>
+  timeFmt.format(new Date(`2000-01-01T${hhmm}:00Z`)).replace(':', ' h ');

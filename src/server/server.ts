@@ -32,7 +32,17 @@ import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd } from './demo.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
-import type { BagDay, Dashboard, FamilyDashboard, Kit, SessionInfo } from '../shared/types.ts';
+import type {
+  BagDay,
+  Dashboard,
+  FamilyDashboard,
+  Kit,
+  MailDetail,
+  MailItem,
+  MailList,
+  SessionInfo,
+} from '../shared/types.ts';
+import type { EdMail } from './ecoledirecte.ts';
 import { bagDate, bagItems, emptyKit } from '../shared/bag.ts';
 
 const projectRoot = new URL('../../', import.meta.url);
@@ -167,6 +177,33 @@ interface BagDoc {
   kits: Record<string, Kit>;
 }
 
+interface MailDoc {
+  version: 1;
+  /** Message famille (`f.<id>`) → élèves avec qui un parent l'a partagé. */
+  shares: Record<string, string[]>;
+  /** Par membre : début du suivi (ms) et messages ouverts dans Orbite (clé → ms). */
+  readers: Record<string, { since: number; opened: Record<string, number> }>;
+}
+
+type MailRef =
+  | { box: 'family'; childId: null; id: string; key: string }
+  | { box: 'student'; childId: string; id: string; key: string };
+
+/** `f.<id>` (messagerie famille) ou `s.<élève>.<id>` (messagerie d'un élève). */
+function parseMailKey(value: unknown): MailRef {
+  const key = typeof value === 'string' ? value : '';
+  const family = /^f\.(\d{1,12})$/.exec(key);
+  if (family?.[1]) return { box: 'family', childId: null, id: family[1], key };
+  const student = /^s\.([\w:-]{1,60})\.(\d{1,12})$/.exec(key);
+  if (student?.[1] && student[2]) return { box: 'student', childId: student[1], id: student[2], key };
+  throw new HttpError('Message introuvable.', 404);
+}
+
+/** Types de pièces jointes servis tels quels ; les autres sont proposés au téléchargement. */
+const INLINE_TYPES = /^(application\/pdf|image\/(png|jpeg|gif|webp))$/;
+const SAFE_TYPES =
+  /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/plain|audio\/mpeg|video\/mp4|application\/(msword|zip|vnd\.ms-excel|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.[\w.]+|vnd\.oasis\.opendocument\.[\w.]+))$/;
+
 /** Liste de textes courts saisie par la famille (matériel). */
 function cleanList(value: unknown, max = 20): string[] {
   if (!Array.isArray(value)) throw new HttpError('Liste de matériel invalide.', 400);
@@ -206,6 +243,7 @@ export function createApp(options: AppOptions): http.Server {
   const seen = vault.load<SeenDoc>('seen', { version: 1, seenAt: {} });
   const checks = vault.load<ChecksDoc>('checks', { version: 1, done: {} });
   const bag = vault.load<BagDoc>('bag', { version: 1, packed: {}, kits: {} });
+  const mail = vault.load<MailDoc>('mail', { version: 1, shares: {}, readers: {} });
   const validDay = (value: unknown): string => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HttpError('Date invalide.', 400);
     const diff = (Date.parse(value + 'T12:00:00Z') - Date.parse(parisDate(new Date()) + 'T12:00:00Z')) / 86400000;
@@ -252,7 +290,7 @@ export function createApp(options: AppOptions): http.Server {
     if (!h) return false;
     if (h === publicHost || extraHosts.has(h)) return true;
     const name = h.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
-    // Noms locaux (« syno5g », « syno5g.local ») et adresses IP : réseau de la maison.
+    // Noms locaux (« monnas », « monnas.local ») et adresses IP : réseau de la maison.
     return name === 'localhost' || !name.includes('.') || name.endsWith('.local') || isIP(name) !== 0;
   };
 
@@ -307,6 +345,97 @@ export function createApp(options: AppOptions): http.Server {
     const { dashboard } = await ed.dashboard();
     if (!dashboard?.children.some((c) => c.id === childId)) throw new HttpError('Élève introuvable.', 404);
     return childId;
+  };
+
+  /** Droit de lire un message : parents toujours ; élève, sa propre boîte ou ce qu'un parent lui a partagé. */
+  const mailAllowed = async (me: MemberRecord, ref: MailRef): Promise<void> => {
+    if (ref.box === 'student') await canSee(me, ref.childId);
+    else if (me.role !== 'parent' && (!me.studentId || !(mail.shares[ref.key] ?? []).includes(me.studentId)))
+      throw new HttpError('Message introuvable.', 404);
+    // Le compte parent ouvre toutes les boîtes : on vérifie donc que le message
+    // figure bien dans celle que nomme la clé, plutôt que de s'en remettre à ÉcoleDirecte.
+    await listedMail(ref);
+  };
+
+  /** Message présent dans la boîte nommée par la clé (liste relue une fois si besoin), sinon 404. */
+  const listedMail = async (ref: MailRef): Promise<EdMail> => {
+    const find = (list: EdMail[]) => list.find((m) => m.id === ref.id);
+    const found = find(await ed.mailbox(ref.childId)) ?? find(await ed.mailbox(ref.childId, 0));
+    if (!found) throw new HttpError('Message introuvable.', 404);
+    return found;
+  };
+
+  const reader = (me: MemberRecord) => {
+    mail.readers[me.id] ??= { since: Date.now() - 14 * 86400000, opened: {} };
+    return mail.readers[me.id] as MailDoc['readers'][string];
+  };
+
+  /** Repères propres à Orbite : clé, nouveauté pour ce membre, partage (parents). */
+  const mailItem = (me: MemberRecord, m: EdMail, ref: Omit<MailRef, 'id' | 'key'>): MailItem => {
+    const key = ref.box === 'family' ? `f.${m.id}` : `s.${ref.childId}.${m.id}`;
+    const r = reader(me);
+    const time = Date.parse(m.date + ':00+01:00') || 0;
+    // Un message famille partagé avec un enfant reste « lu » sur ÉcoleDirecte dès qu'un parent l'a ouvert : seul Orbite compte alors.
+    const edRead = ref.box === 'family' && me.role === 'child' ? false : m.read;
+    return {
+      key,
+      box: ref.box,
+      childId: ref.childId,
+      subject: m.subject,
+      from: m.from,
+      fromRole: m.fromRole,
+      date: m.date,
+      files: m.files.map(({ id, name }) => ({ id, name })),
+      isNew: !r.opened[key] && !edRead && time >= r.since,
+      ...(ref.box === 'family' && me.role === 'parent' ? { sharedWith: mail.shares[key] ?? [] } : {}),
+    };
+  };
+
+  const pruneMail = () => {
+    const cut = Date.now() - 120 * 86400000;
+    for (const r of Object.values(mail.readers))
+      for (const [k, t] of Object.entries(r.opened)) if (t < cut) delete r.opened[k];
+  };
+
+  /** Lien de téléchargement signé (15 min) : il fonctionne même ouvert hors de l'appli installée, sans cookie. */
+  const fileLink = (me: MemberRecord, token: string | undefined, key: string, file: string): string => {
+    const payload = Buffer.from(
+      JSON.stringify({ k: key, f: file, m: me.id, d: family.deviceTag(token), e: Date.now() + 15 * 60000 }),
+    ).toString('base64url');
+    const sig = createHmac('sha256', secretDoc.secret)
+      .update('file:' + payload)
+      .digest('base64url');
+    return `/api/message/file?t=${payload}.${sig}`;
+  };
+
+  const readFileLink = (token: string | null): { k: string; f: string; m: string; d: string } => {
+    const [payload = '', sig = ''] = (token ?? '').split('.');
+    // Contrôle de forme d'abord : une signature non ASCII ferait échouer la comparaison à temps constant.
+    if (!/^[\w-]{1,1024}$/.test(payload) || !/^[\w-]{43}$/.test(sig))
+      throw new HttpError('Lien de pièce jointe invalide.', 403);
+    const expected = createHmac('sha256', secretDoc.secret)
+      .update('file:' + payload)
+      .digest('base64url');
+    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected)))
+      throw new HttpError('Lien de pièce jointe invalide.', 403);
+    let data: { k?: unknown; f?: unknown; m?: unknown; d?: unknown; e?: unknown };
+    try {
+      data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    } catch {
+      throw new HttpError('Lien de pièce jointe invalide.', 403);
+    }
+    if (typeof data.e !== 'number' || data.e < Date.now())
+      throw new HttpError('Lien expiré : rouvre le message dans Orbite.', 410);
+    if (
+      typeof data.k !== 'string' ||
+      typeof data.f !== 'string' ||
+      typeof data.m !== 'string' ||
+      typeof data.d !== 'string'
+    )
+      throw new HttpError('Lien de pièce jointe invalide.', 403);
+    // Lien lié à l'appareil : il cesse de fonctionner dès que ce profil est verrouillé ou déconnecté.
+    if (!family.deviceActive(data.m, data.d)) throw new HttpError('Lien expiré : rouvre le message dans Orbite.', 410);
+    return { k: data.k, f: data.f, m: data.m, d: data.d };
   };
 
   const findMember = (data: RequestData) => {
@@ -572,6 +701,89 @@ export function createApp(options: AppOptions): http.Server {
       },
     ],
     [
+      'POST /api/messages',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const maxAge = ctx.data.refresh === true ? 0 : undefined;
+        const scope = ctx.data.childId ?? (me.role === 'parent' ? null : me.studentId);
+        let items: MailItem[] = [];
+        let unavailable: string | null = null;
+        if (scope === null) {
+          requireParent(ctx);
+          items = (await ed.mailbox(null, maxAge)).map((m) => mailItem(me, m, { box: 'family', childId: null }));
+        } else {
+          const childId = await canSee(me, scope);
+          try {
+            items = (await ed.mailbox(childId, maxAge)).map((m) => mailItem(me, m, { box: 'student', childId }));
+          } catch (e) {
+            if (!(e instanceof EdError) || e.status === 503) throw e;
+            unavailable = 'La messagerie élève n’est pas accessible depuis le compte parent pour cet établissement.';
+          }
+          const shared = Object.entries(mail.shares).filter(([, ids]) => ids.includes(childId));
+          if (shared.length) {
+            try {
+              const keys = new Set(shared.map(([k]) => k));
+              const family = (await ed.mailbox(null)).filter((m) => keys.has(`f.${m.id}`));
+              items.push(...family.map((m) => mailItem(me, m, { box: 'family', childId: null })));
+            } catch {}
+          }
+        }
+        items.sort((a, b) => b.date.localeCompare(a.date));
+        vault.save('mail', mail);
+        const result: MailList = { items, unavailable, unread: items.filter((i) => i.isNew).length };
+        return result;
+      },
+    ],
+    [
+      'POST /api/message',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const ref = parseMailKey(ctx.data.key);
+        await mailAllowed(me, ref);
+        const detail = await ed.mail(ref.childId, ref.id);
+        const item = mailItem(me, detail, { box: ref.box, childId: ref.childId });
+        reader(me).opened[ref.key] = Date.now();
+        pruneMail();
+        vault.save('mail', mail);
+        const result: MailDetail = {
+          ...item,
+          key: ref.key,
+          isNew: false,
+          text: detail.text,
+          files: detail.files.map((f) => ({ ...f, url: fileLink(me, ctx.token, ref.key, f.id) })),
+        };
+        return result;
+      },
+    ],
+    [
+      'POST /api/message/share',
+      async (ctx) => {
+        requireParent(ctx);
+        const ref = parseMailKey(ctx.data.key);
+        if (ref.box !== 'family') throw new HttpError('Seuls les messages famille se partagent.', 400);
+        const input = ctx.data.childIds;
+        if (!Array.isArray(input) || input.length > 12 || !input.every((v) => typeof v === 'string'))
+          throw new HttpError('Élèves invalides.', 400);
+        const { dashboard } = await ed.dashboard();
+        if (!dashboard) throw new HttpError('ÉcoleDirecte ne répond pas : réessaie dans un instant.', 503);
+        await listedMail(ref);
+        const known = new Set(dashboard.children.map((c) => c.id));
+        const ids = [...new Set(input as string[])].filter((id) => known.has(id));
+        if (ids.length) mail.shares[ref.key] = ids;
+        else delete mail.shares[ref.key];
+        vault.save('mail', mail);
+        return { sharedWith: ids };
+      },
+    ],
+    [
+      'POST /api/schoollife',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        return ed.schoolLife(childId, ctx.data.refresh === true ? 0 : undefined);
+      },
+    ],
+    [
       'POST /api/coaching',
       async (ctx) => {
         const me = requireMember(ctx);
@@ -726,6 +938,37 @@ export function createApp(options: AppOptions): http.Server {
       };
 
       if (req.method === 'GET' && path === '/api/session') return json(200, sessionInfo(ctx));
+      if (req.method === 'GET' && path === '/api/message/file') {
+        const link = readFileLink(new URL(req.url ?? '/', 'http://orbite.invalid').searchParams.get('t'));
+        const member = family.members.find((m) => m.id === link.m);
+        if (!member) throw new HttpError('Lien de pièce jointe invalide.', 403);
+        const ref = parseMailKey(link.k);
+        await mailAllowed(member, ref);
+        const listed = (await ed.mail(ref.childId, ref.id)).files.find((f) => f.id === link.f);
+        if (!listed) throw new HttpError('Pièce jointe introuvable.', 404);
+        const file = await ed.mailFile(link.f);
+        const type = SAFE_TYPES.test(file.type) ? file.type : 'application/octet-stream';
+        const name = (file.name !== 'piece-jointe' ? file.name : listed.name).replace(/[\p{Cc}"\\]/gu, '');
+        const ascii = name.normalize('NFD').replace(/[^\x20-\x7e]/g, '') || 'piece-jointe';
+        const encoded = encodeURIComponent(name).replace(
+          /['()*]/g,
+          (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+        );
+        res.writeHead(200, {
+          ...baseHeaders,
+          // Le lecteur PDF des navigateurs refuse un document « sandbox » : seuls les autres types le sont.
+          'Content-Security-Policy':
+            type === 'application/pdf'
+              ? "frame-ancestors 'none'"
+              : "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+          'Content-Type': type,
+          'Content-Length': String(file.body.length),
+          'Cache-Control': 'private, no-store',
+          'Content-Disposition': `${INLINE_TYPES.test(type) ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encoded}`,
+        });
+        res.end(file.body);
+        return;
+      }
       const route = routes.get(`${req.method} ${path}`);
       if (req.method === 'POST') {
         if (req.headers['x-orbite-client'] !== '1' || !req.headers['content-type']?.startsWith('application/json'))

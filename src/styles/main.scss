@@ -1,7 +1,9 @@
 // Orbite — feuille de style unique, pensée d'abord pour le téléphone.
 //
-// Principes : papier froid et encre bleu nuit, une couleur personnelle par membre
-// (--accent), l'orbite comme seul élément spectaculaire, chiffres en Bricolage
+// Principes : chaque écran s'ouvre sur un « ciel » à la couleur du membre ou de
+// l'élève affiché (--accent), qui passe sous la barre d'état ; l'orbite y brille
+// en blanc. Dessous, papier froid et encre indigo, cartes plates. Navigation par
+// un dock flottant (rail vertical sur grand écran). Chiffres en Bricolage
 // Grotesque resserrée, texte en Atkinson Hyperlegible (lisibilité des enfants).
 
 @use 'sass:list';
@@ -76,13 +78,13 @@ $colors: (
 // ---------- Jetons ----------
 
 :root {
-  --paper: #f3f5fa;
+  --paper: #f1f2f9;
   --surface: #ffffff;
-  --surface-2: #e9edf6;
-  --ink: #141a33;
-  --ink-2: #4a5375;
-  --ink-3: #848cab;
-  --line: #dfe4ef;
+  --surface-2: #e7e9f4;
+  --ink: #15132e;
+  --ink-2: #4b4a6b;
+  --ink-3: #85849f;
+  --line: #dfe1ee;
   --good: #12935f;
   --mid: #c77a00;
   --low: #d93a45;
@@ -91,8 +93,10 @@ $colors: (
   --low-bg: #fbe1e3;
   --display: 'Bricolage', 'Avenir Next Condensed', system-ui, sans-serif;
   --text: 'Atkinson', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --tabbar: 64px;
-  --gutter: 18px;
+  --dock: 68px;
+  --gutter: 16px;
+  --radius: 22px;
+  --night: #160f45;
   color-scheme: light;
   @each $name, $pair in $colors {
     --c-#{$name}: #{list.nth($pair, 1)};
@@ -100,13 +104,14 @@ $colors: (
 }
 
 @mixin dark {
-  --paper: #0d1026;
-  --surface: #171b38;
-  --surface-2: #20254a;
-  --ink: #eef0fa;
-  --ink-2: #b2b8d6;
-  --ink-3: #737a9d;
-  --line: #2a2f56;
+  --paper: #0b0a1d;
+  --surface: #17152f;
+  --surface-2: #221f40;
+  --ink: #f1f0ff;
+  --ink-2: #b4b2d4;
+  --ink-3: #75739a;
+  --line: #2b2850;
+  --night: #0b0a1d;
   --good: #47d391;
   --mid: #ffbb4a;
   --low: #ff6b75;
@@ -127,6 +132,30 @@ $colors: (
   :root:not([data-theme]) {
     @include dark;
   }
+}
+
+// ---------- Ciel ----------
+
+// Fond du ciel : quelques étoiles, une lueur de la couleur d'accent, un dégradé
+// vers la nuit. `--sky` sert aussi aux textes posés sur du blanc dans le ciel.
+@mixin sky-bg {
+  --sky: color-mix(in srgb, var(--accent) 74%, #160f45);
+  --sky-deep: color-mix(in srgb, var(--accent) 36%, #0e0a2e);
+  color: #fff;
+  background:
+    radial-gradient(1.4px 1.4px at 12% 22%, rgb(255 255 255 / 0.85), transparent),
+    radial-gradient(1px 1px at 34% 64%, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.2px 1.2px at 58% 16%, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1px 1px at 76% 58%, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(1.6px 1.6px at 90% 30%, rgb(255 255 255 / 0.75), transparent),
+    radial-gradient(1px 1px at 6% 80%, rgb(255 255 255 / 0.45), transparent),
+    radial-gradient(1.1px 1.1px at 46% 88%, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(110% 80% at 100% 0%, color-mix(in srgb, var(--accent) 62%, #fff) 0%, transparent 62%),
+    linear-gradient(172deg, var(--sky) 12%, var(--sky-deep) 100%);
+}
+@mixin sky-dark {
+  --sky: color-mix(in srgb, var(--accent) 50%, #0b0a1d);
+  --sky-deep: color-mix(in srgb, var(--accent) 16%, #0b0a1d);
 }
 
 // ---------- Base ----------
@@ -208,6 +237,10 @@ button {
   flex: none;
 }
 
+.boot {
+  --accent: var(--c-comete);
+  @include sky-bg;
+}
 .boot,
 .boot-error {
   min-height: 100dvh;
@@ -227,81 +260,265 @@ button {
 .shell {
   --accent: var(--c-comete);
   min-height: 100dvh;
-  padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 24px);
+  padding-bottom: calc(var(--dock) + max(12px, env(safe-area-inset-bottom)) + 28px);
 }
 .view {
-  max-width: 560px;
+  max-width: 600px;
   margin: 0 auto;
   padding: 0 calc(var(--gutter) + env(safe-area-inset-right)) 0 calc(var(--gutter) + env(safe-area-inset-left));
 }
 .screen {
-  padding-top: calc(env(safe-area-inset-top) + 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  &.is-entering {
+    animation: screen-in 0.4s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  }
+}
+.flow {
   display: flex;
   flex-direction: column;
   gap: 26px;
 }
 
+// Le ciel : en-tête de chaque écran, sous la barre d'état du téléphone.
 .top {
+  @include sky-bg;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  gap: 16px;
+  margin: 0 calc(-1 * (var(--gutter) + env(safe-area-inset-right))) 0
+    calc(-1 * (var(--gutter) + env(safe-area-inset-left)));
+  padding: calc(env(safe-area-inset-top) + 10px) calc(var(--gutter) + env(safe-area-inset-right)) 26px
+    calc(var(--gutter) + env(safe-area-inset-left));
+  overflow: hidden;
+  border-radius: 0 0 34px 34px;
+  // Anneau d'orbite en haut à droite, et son satellite qui en fait le tour.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    width: 380px;
+    height: 380px;
+    right: -180px;
+    top: -200px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  &::before {
+    border: 1.5px solid rgb(255 255 255 / 0.2);
+    box-shadow:
+      0 0 0 44px rgb(255 255 255 / 0.035),
+      0 0 0 88px rgb(255 255 255 / 0.025);
+  }
+  &::after {
+    background: radial-gradient(
+      circle at 50% 0,
+      rgb(255 255 255 / 0.9) 0 3.5px,
+      rgb(255 255 255 / 0.18) 4.5px 8px,
+      transparent 9px
+    );
+    animation: orbit-spin 60s linear infinite;
+    animation-delay: -38s;
+  }
+}
+.top:has(+ .lift) {
+  padding-bottom: 62px;
+}
+.top + .lift {
+  position: relative;
+  z-index: 1;
+  margin-top: -60px;
+}
+.sky-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 56px;
+  min-height: 52px;
 }
 .top-text {
   flex: 1;
   min-width: 0;
 }
 .title {
-  font: 700 2rem/1.02 var(--display);
+  font: 800 2.15rem/1 var(--display);
+  font-stretch: 78%;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.top.is-big .title {
+  font-size: 2.45rem;
+}
+.message .top .title {
+  font-size: 1.55rem;
+  line-height: 1.08;
   font-stretch: 84%;
-  letter-spacing: -0.025em;
 }
 .subtitle {
-  color: var(--ink-2);
+  color: rgb(255 255 255 / 0.84);
   font-size: 0.92rem;
-  margin-top: 4px;
+  font-weight: 700;
+  margin-top: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sky-button {
+  background: rgb(255 255 255 / 0.16);
+  color: #fff;
+  &:active {
+    background: rgb(255 255 255 / 0.28);
+  }
+}
+.top .sky-avatar {
+  background: #fff;
+  color: var(--sky);
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.22);
+}
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.top .switcher {
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0 var(--gutter);
+}
+.top .switch {
+  border: 0;
+  background: rgb(255 255 255 / 0.15);
+  color: #fff;
+  .avatar {
+    background: rgb(255 255 255 / 0.92);
+    color: var(--sky);
+  }
+  &.is-active {
+    background: #fff;
+    color: color-mix(in srgb, var(--accent) 78%, #000);
+    .avatar {
+      background: var(--accent);
+      color: #fff;
+    }
+  }
+}
+.top .segmented {
+  background: rgb(8 4 40 / 0.22);
+  button {
+    color: rgb(255 255 255 / 0.86);
+    &.is-active {
+      background: #fff;
+      color: var(--sky);
+      box-shadow: none;
+    }
+  }
+}
+.lift > .empty {
+  background: var(--surface);
+  border: 0;
+}
 
+// Ciel de nuit en thème sombre.
+:root[data-theme='dark'] {
+  .top,
+  .lock-brand,
+  .boot {
+    @include sky-dark;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'],
+  :root:not([data-theme]) {
+    .top,
+    .lock-brand,
+    .boot {
+      @include sky-dark;
+    }
+  }
+}
+
+// Dock flottant : la bulle glisse vers l'onglet actif.
 .tabbar {
   position: fixed;
-  inset: auto 0 0 0;
-  z-index: 20;
+  z-index: 30;
+  left: calc(12px + env(safe-area-inset-left));
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  max-width: 560px;
+  height: var(--dock);
+  margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  height: calc(var(--tabbar) + env(safe-area-inset-bottom));
-  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  background: color-mix(in srgb, var(--paper) 82%, transparent);
-  backdrop-filter: blur(18px) saturate(1.4);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  border-top: 1px solid var(--line);
+  padding: 6px;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  backdrop-filter: blur(22px) saturate(1.8);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8);
+  box-shadow:
+    0 18px 40px -14px color-mix(in srgb, #0b0a1d 48%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.tab-blob {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: calc((100% - 12px) / 5);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  transform: translateX(calc(var(--i, 0) * 100%));
+  transition: transform 0.45s cubic-bezier(0.34, 1.25, 0.5, 1);
+  opacity: 0;
+}
+.tabbar.has-active .tab-blob {
+  opacity: 1;
 }
 .tab {
   position: relative;
+  z-index: 1;
   display: grid;
   justify-items: center;
   align-content: center;
   gap: 3px;
+  border-radius: 20px;
   color: var(--ink-3);
   text-decoration: none;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  transition: color 0.2s;
+  &:active .tab-icon {
+    transform: scale(0.86);
+  }
   &.is-active {
     color: var(--accent);
-    // Petit satellite au-dessus de l'onglet actif.
-    &::before {
-      content: '';
-      position: absolute;
-      top: 6px;
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: currentColor;
-      transform: translateX(15px);
+    .tab-icon {
+      transform: translateY(-1px) scale(1.06);
     }
+  }
+}
+.tab-icon {
+  position: relative;
+  display: grid;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tab-badge {
+  position: absolute;
+  top: -6px;
+  left: 15px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--low);
+  color: #fff;
+  font: 700 0.68rem/18px var(--text);
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &[hidden] {
+    display: none;
   }
 }
 
@@ -599,14 +816,64 @@ button {
 .hero {
   display: grid;
   place-items: center;
-  margin: -10px 0 -52px;
+  margin: -4px 0 -14px;
 }
 .orbit {
   position: relative;
   aspect-ratio: 1;
 }
 .orbit-hero {
-  width: min(78vw, 300px);
+  width: min(72vw, 284px);
+}
+// L'orbite brille en blanc dans le ciel ; les satellites gardent les couleurs du barème, éclaircies.
+.top {
+  .orbit-track {
+    stroke: rgb(255 255 255 / 0.2);
+  }
+  .orbit-tick {
+    stroke: #fff;
+    opacity: 0.5;
+  }
+  .orbit-progress {
+    stroke: #fff;
+    filter: drop-shadow(0 0 8px rgb(255 255 255 / 0.55));
+  }
+  .orbit-class {
+    fill: rgb(255 255 255 / 0.75);
+  }
+  .orbit-sat {
+    stroke: var(--sky);
+    &.band-good {
+      fill: #74f2b6;
+    }
+    &.band-average {
+      fill: #ffd66e;
+    }
+    &.band-poor {
+      fill: #ff95a0;
+    }
+    &.is-fresh {
+      stroke: #fff;
+    }
+  }
+  .orbit-value {
+    text-shadow: 0 2px 24px rgb(0 0 0 / 0.18);
+  }
+  .orbit-scale {
+    color: rgb(255 255 255 / 0.7);
+  }
+  .orbit-trend {
+    background: rgb(255 255 255 / 0.16);
+    color: #fff;
+    &.trend-up {
+      background: rgb(116 242 182 / 0.22);
+      color: #d7ffec;
+    }
+    &.trend-down {
+      background: rgb(255 149 160 / 0.24);
+      color: #ffe3e7;
+    }
+  }
 }
 .orbit-mini {
   width: 132px;
@@ -727,6 +994,14 @@ button {
 .fact-accent {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
+}
+.fact-alert {
+  background: var(--low-bg);
+  color: var(--low);
+}
+.fact-warn {
+  background: var(--mid-bg);
+  color: var(--mid);
 }
 
 // ---------- Blocs ----------
@@ -1153,12 +1428,14 @@ button {
 .kid-rail {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(200px, 72%);
+  grid-auto-columns: minmax(214px, 76%);
   gap: 12px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  margin: 0 calc(-1 * var(--gutter));
-  padding: 4px var(--gutter) 10px;
+  margin-left: calc(-1 * var(--gutter));
+  margin-right: calc(-1 * var(--gutter));
+  padding: 0 var(--gutter) 14px;
+  scroll-padding: 0 var(--gutter);
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
@@ -1168,39 +1445,56 @@ button {
     display: grid;
   }
 }
-@media (min-width: 520px) {
+@media (min-width: 560px) {
   .kid-rail {
     grid-auto-columns: minmax(200px, 1fr);
   }
 }
 .kid {
+  position: relative;
   display: grid;
-  justify-items: center;
-  gap: 4px;
-  padding: 18px 14px 16px;
+  gap: 6px;
+  padding: 14px 14px 16px;
   border: 0;
-  border-radius: 28px;
+  border-radius: 26px;
   background: var(--surface);
-  text-align: center;
-  transition: transform 0.15s ease;
+  text-align: left;
+  box-shadow: 0 16px 34px -20px color-mix(in srgb, var(--accent) 70%, #0b0a1d);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
   &:active {
-    transform: scale(0.98);
+    transform: scale(0.97);
+  }
+  .orbit-mini {
+    justify-self: center;
+    width: 138px;
+    margin: 0 0 -26px;
+  }
+}
+.kid-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  .avatar {
+    background: var(--accent);
   }
 }
 .kid-name {
-  margin-top: 6px;
-  font: 700 1.4rem/1 var(--display);
-  font-stretch: 85%;
-  color: var(--accent);
+  font: 800 1.35rem/1 var(--display);
+  font-stretch: 82%;
+  color: var(--ink);
 }
 .kid-class {
-  color: var(--ink-3);
-  font-size: 0.85rem;
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 .kid-facts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   gap: 6px;
   margin-top: 8px;
 }
@@ -1238,9 +1532,12 @@ button {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  margin: -10px calc(-1 * var(--gutter)) 0;
+  margin: 0 calc(-1 * var(--gutter));
   padding: 0 var(--gutter);
   scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 .switch {
   display: inline-flex;
@@ -1411,26 +1708,35 @@ button {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 14px 16px;
+  padding: 12px 16px 12px 12px;
   border: 0;
-  border-radius: 22px;
-  background: var(--accent);
-  color: #fff;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
   text-align: left;
-  &.is-ready {
-    background: color-mix(in srgb, var(--good) 85%, var(--ink));
+  box-shadow: 0 16px 34px -20px color-mix(in srgb, var(--accent) 75%, #0b0a1d);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:active {
+    transform: scale(0.98);
   }
-  .icon:last-child {
-    opacity: 0.8;
+  small {
+    color: var(--ink-2);
+  }
+  > .icon:last-child {
+    color: var(--ink-3);
+  }
+  &.is-ready .bag-card-icon {
+    background: var(--good);
   }
 }
 .bag-card-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: rgb(255 255 255 / 0.18);
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: #fff;
   flex: none;
 }
 .bag-card-text {
@@ -1455,6 +1761,7 @@ button {
   padding: 20px 18px;
   border-radius: 28px;
   background: var(--surface);
+  box-shadow: 0 16px 34px -20px color-mix(in srgb, var(--accent) 75%, #0b0a1d);
   &.is-ready {
     background: color-mix(in srgb, var(--good) 12%, var(--surface));
   }
@@ -1774,6 +2081,10 @@ button {
   background: var(--mid-bg);
   color: var(--mid);
 }
+.chip-alert {
+  background: var(--low-bg);
+  color: var(--low);
+}
 .install {
   color: var(--ink-2);
   .icon {
@@ -1874,7 +2185,7 @@ button {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 14px);
+  bottom: calc(var(--dock) + max(12px, env(safe-area-inset-bottom)) + 14px);
   z-index: 40;
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
@@ -1897,10 +2208,18 @@ button {
   margin: 0 auto;
   padding: calc(env(safe-area-inset-top) + 22px) 22px calc(env(safe-area-inset-bottom) + 22px);
 }
+.lock {
+  --accent: var(--c-comete);
+}
 .lock-brand {
+  @include sky-bg;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: calc(-1 * (env(safe-area-inset-top) + 22px)) -22px 0;
+  padding: calc(env(safe-area-inset-top) + 22px) 22px 30px;
+  border-radius: 0 0 34px 34px;
 }
 .wordmark {
   font: 800 1.7rem/1 var(--display);
@@ -2053,6 +2372,459 @@ button {
   animation: shake 0.4s;
 }
 
+// ---------- Messagerie ----------
+
+.mail-list {
+  display: grid;
+  gap: 2px;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.mail-row {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 13px 14px;
+  border: 0;
+  background: var(--surface);
+  text-align: left;
+  transition: background 0.15s;
+  &:active {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+}
+.mail.is-new .mail-row {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+.mail-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  color: var(--accent);
+  font: 800 1.15rem/1 var(--display);
+  &.role-staff,
+  &.role-other {
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--ink-2);
+  }
+}
+.mail-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.mail-top {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.mail-from {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 0.86rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mail-date {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+.mail-subject {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink);
+}
+.mail.is-new .mail-subject {
+  font-weight: 700;
+}
+.mail-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.mail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+}
+.mail-clip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mail-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.avatar-family {
+  background: var(--ink-2);
+}
+.mail-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 16px 34px -20px color-mix(in srgb, var(--accent) 70%, #0b0a1d);
+}
+.mail-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.mail-card-from {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  small {
+    color: var(--ink-3);
+    font-size: 0.84rem;
+  }
+}
+.mail-text {
+  display: grid;
+  gap: 10px;
+  font-size: 1.03rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  a {
+    color: var(--accent);
+    font-weight: 700;
+  }
+}
+.mail-files {
+  display: grid;
+  gap: 8px;
+}
+.mail-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 700;
+  > .icon:last-child {
+    color: var(--ink-3);
+  }
+}
+.mail-file-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  flex: none;
+}
+.mail-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px 0 8px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  .avatar {
+    background: var(--accent);
+  }
+  &:active {
+    transform: scale(0.95);
+  }
+  &.is-on {
+    border-style: solid;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+    .avatar {
+      background: #fff;
+      color: var(--accent);
+    }
+  }
+}
+
+// ---------- Vie scolaire ----------
+
+.kind-absence {
+  --k: var(--mid);
+}
+.kind-retard {
+  --k: var(--c-lagon);
+}
+.kind-punition,
+.kind-sanction {
+  --k: var(--low);
+}
+.kind-encouragement {
+  --k: var(--good);
+}
+.kind-autre {
+  --k: var(--ink-2);
+}
+.life-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.life-tile {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  dt {
+    color: var(--ink-2);
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+  dd {
+    font: 800 2.5rem/1 var(--display);
+    font-stretch: 75%;
+    font-variant-numeric: tabular-nums;
+    color: var(--k);
+  }
+  small {
+    color: var(--low);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  &::after {
+    content: '';
+    position: absolute;
+    right: -22px;
+    top: -22px;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--k) 16%, transparent);
+  }
+  &.is-zero dd {
+    color: var(--ink-3);
+  }
+}
+.life-list {
+  display: grid;
+  gap: 8px;
+}
+.life-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  background: var(--surface);
+}
+.life-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--k) 16%, transparent);
+  color: var(--k);
+}
+.life-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.life-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.life-size {
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.life-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+.life-when,
+.life-comment {
+  color: var(--ink-2);
+  font-size: 0.86rem;
+}
+.life-comment {
+  font-style: italic;
+}
+.life-calm {
+  width: 100%;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 0;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+  color: var(--good);
+  text-align: left;
+  span {
+    display: grid;
+    gap: 2px;
+    color: var(--ink);
+  }
+  small {
+    color: var(--ink-2);
+    font-size: 0.86rem;
+  }
+}
+.skeleton-row {
+  height: 64px;
+}
+
+// ---------- Grands écrans ----------
+
+@media (min-width: 900px) {
+  :root {
+    --gutter: 28px;
+  }
+  .shell {
+    padding: 0 0 48px calc(120px + env(safe-area-inset-left));
+  }
+  .view {
+    max-width: 1120px;
+  }
+  .top {
+    margin: 16px 0 0;
+    padding: 22px 30px 30px;
+    border-radius: 34px;
+  }
+  .top:has(+ .lift) {
+    padding-bottom: 66px;
+  }
+  .top .switcher {
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+  }
+  .screen.narrow {
+    width: 100%;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  .flow {
+    display: block;
+    columns: 2 380px;
+    column-gap: 26px;
+    > * {
+      break-inside: avoid;
+      margin-bottom: 26px;
+    }
+  }
+  .top + .lift:not(.kid-rail) {
+    margin-left: 22px;
+    margin-right: 22px;
+  }
+  .lift > .bag-card {
+    max-width: 560px;
+  }
+  .kid-rail {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    overflow: visible;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0 22px;
+  }
+  .life-tiles {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .tabbar {
+    left: calc(16px + env(safe-area-inset-left));
+    right: auto;
+    top: 16px;
+    bottom: 16px;
+    width: 92px;
+    height: auto;
+    max-width: none;
+    margin: 0;
+    grid-template-columns: 1fr;
+    grid-auto-rows: 78px;
+    align-content: center;
+    gap: 6px;
+  }
+  .tab-blob {
+    display: none;
+  }
+  .tab {
+    font-size: 0.74rem;
+    &.is-active {
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+  }
+  .toast {
+    bottom: 28px;
+  }
+  .sheet {
+    margin: auto;
+    border-radius: 28px;
+  }
+}
+
 // ---------- Squelettes ----------
 
 .skeleton,
@@ -2072,6 +2844,7 @@ button {
   height: 62px;
 }
 .loading-screen {
+  padding-top: calc(env(safe-area-inset-top) + 24px);
   .skeleton-title {
     height: 40px;
     width: 60%;
@@ -2138,6 +2911,22 @@ button {
     transform: translate(-50%, 12px);
   }
 }
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pop {
+  from {
+    transform: scale(0.3);
+  }
+}
 @keyframes shake {
   20%,
   60% {
@@ -2162,5 +2951,8 @@ button {
   }
   .orbit-sat {
     opacity: 1;
+  }
+  .top::after {
+    animation: none;
   }
 }

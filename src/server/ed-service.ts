@@ -16,15 +16,35 @@
  *   l'administrateur est invité à se reconnecter.
  * - Tous les appels passent par une file : ÉcoleDirecte fait tourner son jeton à
  *   chaque réponse, deux appels simultanés casseraient la session.
- * - Cache : tableau de bord 10 min, devoirs 10 min par élève. Le dernier tableau
- *   de bord est conservé chiffré pour s'afficher même si ÉcoleDirecte est indisponible.
+ * - Cache : tableau de bord 10 min, devoirs 10 min par élève, emploi du temps et
+ *   vie scolaire 15 min, messages 5 min (contenu ouvert 30 min). Le dernier
+ *   tableau de bord est conservé chiffré pour s'afficher même si ÉcoleDirecte est
+ *   indisponible ; messages et vie scolaire ne sont jamais écrits sur disque.
  * - Historique : date de première apparition de chaque note, pour signaler les
  *   nouveautés à chaque membre.
  */
-import { EcoleDirecte, EdError, type Factor, type SavedAuth, type VerifyInput } from './ecoledirecte.ts';
+import {
+  EcoleDirecte,
+  EdError,
+  type EdFile,
+  type EdMail,
+  type EdMailDetail,
+  type Factor,
+  type SavedAuth,
+  type VerifyInput,
+} from './ecoledirecte.ts';
 import type { Vault } from './vault.ts';
 import { noteKey, parisHour } from '../shared/metrics.ts';
-import type { AuthResult, AuthState, Course, Dashboard, EdStatus, HomeworkPage, SchoolInfo } from '../shared/types.ts';
+import type {
+  AuthResult,
+  AuthState,
+  Course,
+  Dashboard,
+  EdStatus,
+  HomeworkPage,
+  SchoolInfo,
+  SchoolLife,
+} from '../shared/types.ts';
 
 export interface EdClient {
   state: AuthState;
@@ -36,6 +56,10 @@ export interface EdClient {
   homeworkForChild(childId: string, options: { cursor: number | null }): Promise<HomeworkPage>;
   timetableForChild(childId: string, from: string, to: string): Promise<Course[]>;
   schoolInfosForChild(childId: string): Promise<SchoolInfo[]>;
+  mailbox(childId: string | null): Promise<EdMail[]>;
+  mail(childId: string | null, id: string): Promise<EdMailDetail>;
+  mailFile(fileId: string): Promise<EdFile>;
+  schoolLifeForChild(childId: string): Promise<SchoolLife>;
   exportSession(): SavedAuth | null;
   restoreSession(saved: unknown): void;
 }
@@ -92,6 +116,9 @@ export class EdService {
   private homeworkCache = new Map<string, { time: number; value: HomeworkPage }>();
   private timetableCache = new Map<string, { time: number; value: Course[] }>();
   private infoCache = new Map<string, { time: number; value: SchoolInfo[] }>();
+  private mailCache = new Map<string, { time: number; value: EdMail[] }>();
+  private mailDetails = new Map<string, { time: number; value: EdMailDetail }>();
+  private lifeCache = new Map<string, { time: number; value: SchoolLife }>();
   /** Saisie en cours (attente de vérification) : jamais écrite sur disque. */
   private pending: { username: string; password: string; remember: boolean } | null = null;
 
@@ -204,8 +231,17 @@ export class EdService {
     this.doc.attention = null;
     this.pending = null;
     this.cache = { version: 1, dashboard: null, time: 0 };
-    this.homeworkCache.clear();
+    this.clearCaches();
     this.persist();
+  }
+
+  private clearCaches(): void {
+    this.homeworkCache.clear();
+    this.timetableCache.clear();
+    this.infoCache.clear();
+    this.mailCache.clear();
+    this.mailDetails.clear();
+    this.lifeCache.clear();
   }
 
   disconnect(): Promise<void> {
@@ -215,7 +251,7 @@ export class EdService {
       this.pending = null;
       this.doc = { ...EMPTY };
       this.cache = { version: 1, dashboard: null, time: 0 };
-      this.homeworkCache.clear();
+      this.clearCaches();
       this.vault.save('ecoledirecte', this.doc);
       this.vault.save('cache', this.cache);
     });
@@ -356,6 +392,57 @@ export class EdService {
       } catch {
         return [];
       }
+    });
+  }
+
+  private knownChild(childId: string): void {
+    if (!this.cache.dashboard?.children.some((c) => c.id === childId)) throw new EdError('Élève introuvable.', 404);
+  }
+
+  /**
+   * Messages reçus d'une boîte (`null` = messagerie famille), cache 5 min.
+   * `maxAge = 0` force la relecture (au plus une fois par minute).
+   */
+  mailbox(childId: string | null, maxAge = 5 * 60000): Promise<EdMail[]> {
+    return this.serial(async () => {
+      const key = childId === null ? 'famille' : 'eleve:' + childId;
+      const cached = this.mailCache.get(key);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      if (childId !== null) this.knownChild(childId);
+      const value = await this.call((c) => c.mailbox(childId));
+      this.mailCache.set(key, { time: Date.now(), value });
+      return value;
+    });
+  }
+
+  /** Message complet, gardé 30 min en mémoire (50 au plus). */
+  mail(childId: string | null, id: string): Promise<EdMailDetail> {
+    return this.serial(async () => {
+      const key = (childId === null ? 'famille' : 'eleve:' + childId) + '/' + id;
+      const cached = this.mailDetails.get(key);
+      if (cached && Date.now() - cached.time < 30 * 60000) return cached.value;
+      if (childId !== null) this.knownChild(childId);
+      const value = await this.call((c) => c.mail(childId, id));
+      this.mailDetails.set(key, { time: Date.now(), value });
+      if (this.mailDetails.size > 50) this.mailDetails.delete(this.mailDetails.keys().next().value as string);
+      return value;
+    });
+  }
+
+  /** Pièce jointe, jamais gardée par Orbite. */
+  mailFile(fileId: string): Promise<EdFile> {
+    return this.serial(() => this.call((c) => c.mailFile(fileId)));
+  }
+
+  /** Vie scolaire d'un élève, cache 15 min. */
+  schoolLife(childId: string, maxAge = 15 * 60000): Promise<SchoolLife> {
+    return this.serial(async () => {
+      const cached = this.lifeCache.get(childId);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      this.knownChild(childId);
+      const value = await this.call((c) => c.schoolLifeForChild(childId));
+      this.lifeCache.set(childId, { time: Date.now(), value });
+      return value;
     });
   }
 

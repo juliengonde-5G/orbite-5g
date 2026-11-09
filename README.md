@@ -8,11 +8,14 @@ Version familiale d'[Orbite](https://github.com/thomasfaure/orbite-ed) (Thomas F
 
 - **Un compte par membre** de la famille, déverrouillé par un code PIN à six chiffres. Les enfants ne voient que leurs propres résultats ; les parents voient tout.
 - **Une seule connexion ÉcoleDirecte**, celle du compte parent, gardée chiffrée sur le NAS avec reconnexion automatique. Personne d'autre n'en connaît les identifiants.
-- **Interface pensée pour le téléphone** : l'orbite (moyenne au centre, chaque note récente en satellite), devoirs à cocher pour le lendemain, notes, progression, compétences.
+- **Interface pensée pour le téléphone** : chaque écran s'ouvre sur un ciel à la couleur de l'élève, où brille l'orbite (moyenne au centre, chaque note récente en satellite) ; dock d'onglets flottant, rail vertical sur tablette et ordinateur. Devoirs à cocher, notes, progression, compétences.
+- **Mon cartable** : le matin, l'élève voit ses cours du jour, les devoirs à rendre, les infos du collège et la liste du sac à préparer.
+- **Messagerie de l'établissement, en lecture seule** : les parents lisent la messagerie famille et celle de chaque enfant, et peuvent partager un message (sortie, réunion) avec un enfant ; chaque élève lit sa propre messagerie. Pièces jointes par lien signé de 15 minutes. Ouvrir un message le marque comme lu sur ÉcoleDirecte, comme sur le site.
+- **Vie scolaire** : absences, retards, punitions, sanctions et encouragements. Chaque élève voit les siens, les parents tout ; les réglages de l'établissement (sanctions masquées, auteur, commentaires) sont respectés.
 - Mode lecture OpenDyslexic ou grands caractères, thème clair ou sombre, couleur personnelle.
 - Conseil du jour rédigé par Claude, facultatif (statistiques anonymes uniquement).
 
-Lecture seule : Orbite ne modifie rien sur ÉcoleDirecte. Les cases cochées restent dans Orbite.
+Lecture seule : Orbite n'écrit rien sur ÉcoleDirecte (seule l'ouverture d'un message le marque comme lu). Les cases cochées et les partages restent dans Orbite.
 
 ## Installer sur le Synology (Container Manager)
 
@@ -44,7 +47,7 @@ Chaque modification poussée sur `main` publie une nouvelle image `ghcr.io/julie
 
 | Variable | Rôle |
 | --- | --- |
-| `ORBITE_FAMILY` | Profils du premier démarrage : `Julien:parent+admin, Ilan:enfant:5e`. Ignorée ensuite. |
+| `ORBITE_FAMILY` | Profils du premier démarrage : `Camille:parent+admin, Léo:enfant:5e`. Ignorée ensuite. |
 | `ORBITE_PUBLIC_URL` | Adresse HTTPS publique (cookies `Secure`, hôte autorisé). |
 | `ORBITE_ALLOWED_HOSTS` | Autres noms d'hôte autorisés, séparés par des virgules. |
 | `ANTHROPIC_API_KEY` | Active le conseil du jour (Claude). Facultatif. |

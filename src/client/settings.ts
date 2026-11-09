@@ -6,10 +6,13 @@ import { api, ApiError } from './api.ts';
 import { clear, h, icon, tap } from './dom.ts';
 import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
+import { sky } from './views.ts';
 import type { AuthResult, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
 export interface SettingsActions {
   rerender(): void;
+  /** Retour à l'écran d'accueil. */
+  back(): void;
   reloadSession(): Promise<void>;
   reloadData(): void;
   logout(): void;
@@ -611,22 +614,17 @@ export function meView(actions: SettingsActions): HTMLElement {
   };
   return h(
     'div.screen.me',
-    h(
-      'header.top',
-      h(
-        'div.top-text',
-        h('h1.title', me.name),
-        h(
-          'p.subtitle',
-          me.role === 'parent'
-            ? me.admin
-              ? 'Parent administrateur'
-              : 'Parent'
-            : [me.grade, 'Élève'].filter(Boolean).join(', '),
-        ),
-      ),
-      h('span.avatar.avatar-md', initial(me.name)),
-    ),
+    sky({
+      title: me.name,
+      subtitle:
+        me.role === 'parent'
+          ? me.admin
+            ? 'Parent administrateur'
+            : 'Parent'
+          : [me.grade, 'Élève'].filter(Boolean).join(', '),
+      back: () => actions.back(),
+      actions: [h('span.avatar.avatar-md.sky-avatar', initial(me.name))],
+    }),
     h(
       'section.block.prefs',
       h('header.section-head', h('h2', 'Affichage')),

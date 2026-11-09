@@ -89,6 +89,14 @@ const ICONS: Record<string, string> = {
   flat: 'M6 12h12',
   copy: 'M9 9h10v10H9zM5 15V5h10',
   logout: 'M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10',
+  mail: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM4.5 6.5 12 12l7.5-5.5',
+  shield: 'M12 3.5 19 6v5.5c0 4.2-2.9 7.9-7 9-4.1-1.1-7-4.8-7-9V6zM9 12l2 2 4-4',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v4.5l3 2',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
+  flag: 'M5 21V4m0 0h11l-2 4 2 4H5',
+  absent: 'M5 6h14v14H5zM5 10h14M9 4v4m6-4v4m-5 6 4 4m0-4-4 4',
+  file: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  open: 'M14 4h6v6M20 4l-9 9M18 14v5H5V6h5',
 };
 
 export function icon(name: keyof typeof ICONS | string, size = 22): SVGElement {

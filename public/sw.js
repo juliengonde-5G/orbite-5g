@@ -3,7 +3,7 @@
  * instantané et hors connexion. Les données (/api) ne sont jamais mises en
  * cache ici : elles restent sur le serveur, derrière le PIN.
  */
-const CACHE = 'orbite-shell-v1';
+const CACHE = 'orbite-shell-v2';
 const SHELL = ['/', '/style.css', '/client/app.js', '/favicon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

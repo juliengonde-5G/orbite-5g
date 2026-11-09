@@ -16,9 +16,9 @@ test('le coffre chiffre, détecte une altération et refuse de démarrer sans cl
   const dir = temp();
   try {
     const vault = new Vault(dir);
-    vault.save('family', { secret: 'Ilan' });
-    assert.doesNotMatch(readFileSync(join(dir, 'family.enc')).toString('latin1'), /Ilan/);
-    assert.deepEqual(vault.load('family', null), { secret: 'Ilan' });
+    vault.save('family', { secret: 'Léo' });
+    assert.doesNotMatch(readFileSync(join(dir, 'family.enc')).toString('latin1'), /Léo/);
+    assert.deepEqual(vault.load('family', null), { secret: 'Léo' });
     const bytes = readFileSync(join(dir, 'family.enc'));
     bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 1;
     writeFileSync(join(dir, 'family.enc'), bytes);
@@ -32,23 +32,23 @@ test('le coffre chiffre, détecte une altération et refuse de démarrer sans cl
 });
 
 test('profils initiaux, PIN devinables refusés et rattachement par prénom', () => {
-  assert.deepEqual(parseSeed('Julien:parent+admin, Ilan:enfant:5e'), [
-    { name: 'Julien', role: 'parent', admin: true, grade: '' },
-    { name: 'Ilan', role: 'child', admin: false, grade: '5e' },
+  assert.deepEqual(parseSeed('Camille:parent+admin, Léo:enfant:5e'), [
+    { name: 'Camille', role: 'parent', admin: true, grade: '' },
+    { name: 'Léo', role: 'child', admin: false, grade: '5e' },
   ]);
   for (const weak of ['000000', '123456', '987654', '12345', 'abcdef']) assert.throws(() => checkPin(weak));
   assert.equal(checkPin('482916'), '482916');
   const dir = temp();
   try {
-    const family = new Family(new Vault(dir), 'Ophélie:parent, Sacha:enfant:6e, Adan:enfant:6e');
-    assert.equal(family.members.find((m) => m.name === 'Ophélie')?.admin, true, 'premier parent administrateur');
+    const family = new Family(new Vault(dir), 'Alex:parent, Nina:enfant:6e, Malo:enfant:6e');
+    assert.equal(family.members.find((m) => m.name === 'Alex')?.admin, true, 'premier parent administrateur');
     assert.equal(new Set(family.members.map((m) => m.color)).size, 3);
     family.autoLink([
-      { id: '1:12', name: 'SACHA' },
-      { id: '1:13', name: 'Adan' },
+      { id: '1:12', name: 'NINA' },
+      { id: '1:13', name: 'Malo' },
     ]);
-    assert.equal(family.members.find((m) => m.name === 'Sacha')?.studentId, '1:12');
-    assert.equal(family.members.find((m) => m.name === 'Adan')?.studentId, '1:13');
+    assert.equal(family.members.find((m) => m.name === 'Nina')?.studentId, '1:12');
+    assert.equal(family.members.find((m) => m.name === 'Malo')?.studentId, '1:13');
     // Le seed n'est appliqué qu'une fois : les profils viennent ensuite du coffre.
     const again = new Family(new Vault(dir), 'Autre:parent');
     assert.equal(again.members.length, 3);

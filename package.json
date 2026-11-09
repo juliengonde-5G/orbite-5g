@@ -1,6 +1,6 @@
 {
   "name": "orbite-5g",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Orbite pour la famille : notes, devoirs et progrès ÉcoleDirecte sur le NAS, appli mobile installable",

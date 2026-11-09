@@ -8,7 +8,7 @@
  *
  * Fonctionnement :
  * - Premier démarrage : les profils sont créés à partir de `ORBITE_FAMILY`
- *   (« Julien:parent+admin, Ilan:enfant:5e… »). Aucun PIN n'existe encore.
+ *   (« Camille:parent+admin, Léo:enfant:5e… »). Aucun PIN n'existe encore.
  * - Le parent administrateur choisit son PIN depuis le réseau de la maison
  *   (contrôle fait par le serveur), puis génère un code d'activation à usage
  *   unique pour chaque autre membre, qui choisit lui-même son PIN.
@@ -284,6 +284,17 @@ export class Family {
     device.expires = now + DEVICE_DAYS * 86400000;
     if (now - this.lastSave > 3600000) this.save();
     return m;
+  }
+
+  /** Empreinte courte de l'appareil connecté, pour lier un lien signé à cette session. */
+  deviceTag(token: string | undefined): string {
+    return token && /^[a-f0-9]{64}$/.test(token) ? sha256(token).slice(0, 24) : '';
+  }
+
+  /** Vrai si l'appareil (empreinte `deviceTag`) est toujours connecté à ce profil. */
+  deviceActive(memberId: string, tag: string): boolean {
+    const now = Date.now();
+    return !!tag && this.doc.devices.some((d) => d.memberId === memberId && d.hash.startsWith(tag) && d.expires > now);
   }
 
   logout(token: string | undefined): void {

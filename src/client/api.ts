@@ -10,7 +10,10 @@ import type {
   EdStatus,
   FamilyDashboard,
   HomeworkPage,
+  MailDetail,
+  MailList,
   MemberView,
+  SchoolLife,
   Prefs,
   SessionInfo,
 } from '../shared/types.ts';
@@ -67,6 +70,13 @@ export const api = {
   pack: (childId: string, date: string, itemId: string, packed: boolean) =>
     call<{ packed: string[] }>('POST', '/api/bag/pack', { childId, date, itemId, packed }),
   kit: (childId: string, kit: Kit) => call<Kit>('POST', '/api/bag/kit', { childId, kit }),
+  /** `childId` absent : messagerie famille (parents) ou sa propre boîte (élève). */
+  messages: (childId: string | null, refresh = false) =>
+    call<MailList>('POST', '/api/messages', { ...(childId ? { childId } : {}), refresh }),
+  message: (key: string) => call<MailDetail>('POST', '/api/message', { key }),
+  share: (key: string, childIds: string[]) =>
+    call<{ sharedWith: string[] }>('POST', '/api/message/share', { key, childIds }),
+  schoolLife: (childId: string, refresh = false) => call<SchoolLife>('POST', '/api/schoollife', { childId, refresh }),
   admin: {
     members: () => call<{ members: MemberView[]; ed: EdStatus }>('GET', '/api/admin/members'),
     connect: (username: string, password: string, remember: boolean) =>

@@ -20,6 +20,8 @@ import {
 import { orbit } from './orbit.ts';
 import { progressChart } from './chart.ts';
 import { bagCard } from './bag-view.ts';
+import { familyLifeBlock, lifeCard, lifeFacts } from './life-view.ts';
+import { familyMailBlock, mailCard } from './mail-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note } from '../shared/types.ts';
@@ -35,6 +37,61 @@ export interface Actions {
   editKit(child: Child): void;
   refresh(): void;
   rerender(): void;
+  /** Boîte de réception : `family` ou identifiant d'élève. */
+  loadMail(scope: string, refresh?: boolean): void;
+  openMessage(key: string): void;
+  loadMessage(key: string): void;
+  share(key: string, childIds: string[]): void;
+  loadLife(childId: string, refresh?: boolean): void;
+}
+
+/* ---------- En-tête « ciel » ---------- */
+
+export interface SkyOptions {
+  title: string;
+  subtitle?: string | null;
+  back?: (() => void) | null;
+  actions?: (HTMLElement | null | false | undefined)[];
+  /** Contenu sous le titre, dans le ciel : orbite, sélecteur d'élève… */
+  extra?: (HTMLElement | null | false | undefined)[];
+  big?: boolean;
+}
+
+/**
+ * En-tête de chaque écran : un ciel à la couleur du membre (ou de l'élève
+ * affiché), qui passe sous la barre d'état du téléphone.
+ */
+export function sky(o: SkyOptions): HTMLElement {
+  return h(
+    `header.top${o.big ? '.is-big' : ''}`,
+    h(
+      'div.sky-bar',
+      o.back &&
+        h(
+          'button.icon-button.sky-button',
+          {
+            type: 'button',
+            'aria-label': 'Retour',
+            onclick: () => {
+              tap();
+              o.back?.();
+            },
+          },
+          icon('back'),
+        ),
+      h('div.top-text', h('h1.title', o.title), o.subtitle ? h('p.subtitle', o.subtitle) : null),
+      ...(o.actions ?? []),
+    ),
+    ...(o.extra ?? []),
+  );
+}
+
+export function skyButton(label: string, name: string, onclick: () => void, disabled = false): HTMLElement {
+  return h(
+    'button.icon-button.sky-button',
+    { type: 'button', 'aria-label': label, title: label, disabled, onclick },
+    icon(name),
+  );
 }
 
 /* ---------- Repères communs ---------- */
@@ -301,47 +358,45 @@ export function studentHome(child: Child, actions: Actions, asParent: boolean): 
   return h(
     'div.screen.student',
     { style: accent(child.id) },
-    h(
-      'header.top',
-      asParent
-        ? h(
-            'button.icon-button',
-            { type: 'button', 'aria-label': 'Retour à la famille', onclick: () => actions.go('home') },
-            icon('back'),
-          )
-        : null,
-      h(
-        'div.top-text',
-        h('h1.title', asParent ? child.name : greeting(me?.name ?? child.name)),
-        h('p.subtitle', [child.className, child.school].filter(Boolean).join(', ')),
-      ),
-      !asParent &&
-        me &&
-        h(
-          'button.avatar.avatar-btn',
-          { type: 'button', 'aria-label': 'Mon profil', onclick: () => actions.go('me') },
-          initial(me.name),
-        ),
-    ),
+    sky({
+      title: asParent ? child.name : greeting(me?.name ?? child.name),
+      subtitle: [child.className, child.school].filter(Boolean).join(' · '),
+      back: asParent ? () => actions.go('home') : null,
+      actions: [
+        !asParent &&
+          me &&
+          h(
+            'button.avatar.avatar-btn.sky-avatar',
+            { type: 'button', 'aria-label': 'Mon profil et réglages', onclick: () => actions.go('me') },
+            initial(me.name),
+          ),
+      ],
+      extra: [h('div.hero', orbit(child, { fresh: state.fresh }))],
+      big: true,
+    }),
+    h('div.lift', bagCard(child, actions)),
     child.error && h('p.inline-error', child.error),
-    bagCard(child, actions),
-    h('div.hero', orbit(child, { fresh: state.fresh })),
-    coachingLine(child, actions),
-    homeworkBlock(child, actions, 'focus'),
     h(
-      'section.block',
-      sectionHead(
-        'Dernières notes',
-        freshCount > 0 && h('span.counter.counter-accent', `${freshCount} nouvelle${freshCount > 1 ? 's' : ''}`),
+      'div.flow',
+      coachingLine(child, actions),
+      homeworkBlock(child, actions, 'focus'),
+      !asParent && mailCard(child, actions),
+      lifeCard(child, actions),
+      h(
+        'section.block',
+        sectionHead(
+          'Dernières notes',
+          freshCount > 0 && h('span.counter.counter-accent', `${freshCount} nouvelle${freshCount > 1 ? 's' : ''}`),
+        ),
+        child.notes.length
+          ? h(
+              'ul.note-list',
+              recentNotes(child, 5).map((n) => noteRow(child, n)),
+            )
+          : emptyState('Pas encore de note', 'Les notes apparaîtront ici dès leur publication.'),
+        child.notes.length > 5 &&
+          h('button.more-link', { type: 'button', onclick: () => actions.go('grades', child.id) }, 'Toutes les notes'),
       ),
-      child.notes.length
-        ? h(
-            'ul.note-list',
-            recentNotes(child, 5).map((n) => noteRow(child, n)),
-          )
-        : emptyState('Pas encore de note', 'Les notes apparaîtront ici dès leur publication.'),
-      child.notes.length > 5 &&
-        h('button.more-link', { type: 'button', onclick: () => actions.go('grades', child.id) }, 'Toutes les notes'),
     ),
   );
 }
@@ -356,46 +411,33 @@ export function familyHome(actions: Actions): HTMLElement {
   const focus = dueFocus();
   return h(
     'div.screen.family',
-    h(
-      'header.top',
-      h(
-        'div.top-text',
-        h('h1.title', greeting(me?.name ?? '')),
-        h('p.subtitle', state.data?.updatedAt ? `Mis à jour ${sinceText(state.data.updatedAt)}` : 'Famille'),
-      ),
-      h(
-        'button.icon-button',
-        {
-          type: 'button',
-          'aria-label': 'Actualiser depuis ÉcoleDirecte',
-          onclick: () => actions.refresh(),
-          disabled: state.dataLoading,
-        },
-        icon('refresh'),
-      ),
-      h(
-        'button.icon-button',
-        { type: 'button', 'aria-label': 'Réglages', onclick: () => actions.go('me') },
-        icon('gear'),
-      ),
-    ),
-    edBanner(actions),
+    sky({
+      title: greeting(me?.name ?? ''),
+      subtitle: state.data?.updatedAt ? `Mis à jour ${sinceText(state.data.updatedAt)}` : 'Famille',
+      actions: [
+        skyButton('Actualiser depuis ÉcoleDirecte', 'refresh', () => actions.refresh(), state.dataLoading),
+        skyButton('Réglages', 'gear', () => actions.go('me')),
+      ],
+    }),
     children.length === 0
-      ? emptyState(
-          'Aucun élève pour l’instant',
-          state.session?.ed?.link === 'connected'
-            ? 'ÉcoleDirecte ne renvoie aucun élève du collège ou du lycée.'
-            : 'Connecte le compte parent ÉcoleDirecte pour voir les enfants.',
-          me?.admin
-            ? h(
-                'button.button.button-primary',
-                { type: 'button', onclick: () => actions.go('me') },
-                'Connecter ÉcoleDirecte',
-              )
-            : undefined,
+      ? h(
+          'div.lift',
+          emptyState(
+            'Aucun élève pour l’instant',
+            state.session?.ed?.link === 'connected'
+              ? 'ÉcoleDirecte ne renvoie aucun élève du collège ou du lycée.'
+              : 'Connecte le compte parent ÉcoleDirecte pour voir les enfants.',
+            me?.admin
+              ? h(
+                  'button.button.button-primary',
+                  { type: 'button', onclick: () => actions.go('me') },
+                  'Connecter ÉcoleDirecte',
+                )
+              : undefined,
+          ),
         )
       : h(
-          'ul.kid-rail',
+          'ul.kid-rail.lift',
           children.map((c) => {
             const m = metrics(c.notes);
             const hw = state.homework.get(c.id);
@@ -415,9 +457,13 @@ export function familyHome(actions: Actions): HTMLElement {
                     actions.go('child', c.id);
                   },
                 },
+                h(
+                  'span.kid-head',
+                  h('span.avatar.avatar-sm', initial(c.name)),
+                  h('span.kid-name', c.name),
+                  h('span.kid-class', c.className),
+                ),
                 orbit(c, { size: 'mini', fresh: state.fresh }),
-                h('span.kid-name', c.name),
-                h('span.kid-class', c.className),
                 h(
                   'span.kid-facts',
                   m.trend !== null &&
@@ -427,22 +473,32 @@ export function familyHome(actions: Actions): HTMLElement {
                     ),
                   due !== null && h('span.fact', due === 0 ? 'Devoirs faits' : `${due} devoir${due > 1 ? 's' : ''}`),
                   fresh > 0 && h('span.fact.fact-accent', `${fresh} nouvelle${fresh > 1 ? 's' : ''}`),
+                  ...lifeFacts(c, actions),
                 ),
                 c.error && h('span.kid-error', 'Données partielles'),
               ),
             );
           }),
         ),
-    feed.length > 0 &&
-      h(
-        'section.block',
-        sectionHead('Notes récentes'),
+    edBanner(actions),
+    h(
+      'div.flow',
+      familyMailBlock(actions),
+      familyLifeBlock(children, actions),
+      alertsBlock(children, actions),
+      feed.length > 0 &&
         h(
-          'ul.note-list',
-          feed.map(({ c, n }) => noteRow(c, n, true)),
+          'section.block',
+          sectionHead(
+            'Notes récentes',
+            h('button.link-button', { type: 'button', onclick: () => actions.go('grades') }, 'Tout voir'),
+          ),
+          h(
+            'ul.note-list',
+            feed.map(({ c, n }) => noteRow(c, n, true)),
+          ),
         ),
-      ),
-    alertsBlock(children, actions),
+    ),
   );
 }
 
@@ -500,8 +556,11 @@ export function tasksView(child: Child, actions: Actions): HTMLElement {
   return h(
     'div.screen',
     { style: accent(child.id) },
-    h('header.top', h('div.top-text', h('h1.title', 'Devoirs'), h('p.subtitle', child.name))),
-    childSwitcher(actions),
+    sky({
+      title: 'Devoirs',
+      subtitle: state.session?.me?.role === 'parent' ? child.name : 'Coche ce qui est fait',
+      extra: [childSwitcher(actions)],
+    }),
     homeworkBlock(child, actions, 'all'),
     h('p.footnote', 'Les cases cochées ici restent dans Orbite et ne sont pas envoyées à ÉcoleDirecte.'),
   );
@@ -515,14 +574,17 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
   return h(
     'div.screen',
     { style: accent(child.id) },
-    h('header.top', h('div.top-text', h('h1.title', 'Notes'), h('p.subtitle', child.name))),
-    childSwitcher(actions),
+    sky({
+      title: state.notesMode === 'progress' ? 'Progrès' : 'Notes',
+      subtitle: state.session?.me?.role === 'parent' ? child.name : child.className,
+      extra: [childSwitcher(actions)],
+    }),
     h(
       'div.toolbar',
       h(
         'div.segmented',
         { role: 'tablist' },
-        (['recent', 'subjects'] as const).map((mode) =>
+        (['recent', 'subjects', 'progress'] as const).map((mode) =>
           h(
             `button${state.notesMode === mode ? '.is-active' : ''}`,
             {
@@ -534,11 +596,12 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
                 actions.rerender();
               },
             },
-            mode === 'recent' ? 'Récentes' : 'Par matière',
+            mode === 'recent' ? 'Récentes' : mode === 'subjects' ? 'Matières' : 'Progrès',
           ),
         ),
       ),
-      periods.length > 0 &&
+      state.notesMode !== 'progress' &&
+        periods.length > 0 &&
         h(
           'label.select',
           h('span.sr-only', 'Période'),
@@ -555,64 +618,70 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
           ),
         ),
     ),
-    period?.average != null &&
+    state.notesMode === 'progress' && progressBody(child),
+    state.notesMode !== 'progress' &&
+      period?.average != null &&
       h(
         'p.official',
         `Moyenne officielle ${period.label ?? ''} : `,
         h('b', average(period.average)),
         period.classAverage != null && ` (classe ${average(period.classAverage)})`,
       ),
-    notes.length === 0
-      ? emptyState('Aucune note', 'Rien sur cette période pour le moment.')
-      : state.notesMode === 'recent'
-        ? h(
-            'ul.note-list',
-            [...notes].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((n) => noteRow(child, n)),
-          )
-        : h(
-            'ul.subject-list',
-            groups.map((g) => {
-              const m = metrics(g.notes);
-              const open = state.openSubject === g.id;
-              return h(
-                `li.subject${open ? '.is-open' : ''}`,
-                h(
-                  'button.subject-row',
-                  {
-                    type: 'button',
-                    'aria-expanded': String(open),
-                    onclick: () => {
-                      state.openSubject = open ? null : g.id;
-                      actions.rerender();
+    state.notesMode === 'progress'
+      ? null
+      : notes.length === 0
+        ? emptyState('Aucune note', 'Rien sur cette période pour le moment.')
+        : state.notesMode === 'recent'
+          ? h(
+              'ul.note-list',
+              [...notes].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((n) => noteRow(child, n)),
+            )
+          : h(
+              'ul.subject-list',
+              groups.map((g) => {
+                const m = metrics(g.notes);
+                const open = state.openSubject === g.id;
+                return h(
+                  `li.subject${open ? '.is-open' : ''}`,
+                  h(
+                    'button.subject-row',
+                    {
+                      type: 'button',
+                      'aria-expanded': String(open),
+                      onclick: () => {
+                        state.openSubject = open ? null : g.id;
+                        actions.rerender();
+                      },
                     },
-                  },
-                  subjectMark(g.label),
-                  h('span.subject-name', subjectLabel(g.label)),
-                  m.trend !== null &&
+                    subjectMark(g.label),
+                    h('span.subject-name', subjectLabel(g.label)),
+                    m.trend !== null &&
+                      h(
+                        `span.fact.trend-${Math.abs(m.trend) < 0.05 ? 'flat' : m.trend > 0 ? 'up' : 'down'}`,
+                        signed(m.trend),
+                      ),
                     h(
-                      `span.fact.trend-${Math.abs(m.trend) < 0.05 ? 'flat' : m.trend > 0 ? 'up' : 'down'}`,
-                      signed(m.trend),
+                      `span.subject-avg.band-${m.average === null ? 'neutral' : m.average >= 14 ? 'good' : m.average >= 10 ? 'average' : 'poor'}`,
+                      average(m.average),
                     ),
-                  h(
-                    `span.subject-avg.band-${m.average === null ? 'neutral' : m.average >= 14 ? 'good' : m.average >= 10 ? 'average' : 'poor'}`,
-                    average(m.average),
                   ),
-                ),
-                open &&
-                  h(
-                    'ul.note-list.note-list-nested',
-                    [...g.notes]
-                      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-                      .map((n) => noteRow(child, n, false, false)),
-                  ),
-              );
-            }),
-          ),
-    h('p.footnote', 'Moyenne indicative : notes ramenées sur 20 et pondérées, sans les coefficients des matières.'),
+                  open &&
+                    h(
+                      'ul.note-list.note-list-nested',
+                      [...g.notes]
+                        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+                        .map((n) => noteRow(child, n, false, false)),
+                    ),
+                );
+              }),
+            ),
+    state.notesMode !== 'progress' &&
+      h('p.footnote', 'Moyenne indicative : notes ramenées sur 20 et pondérées, sans les coefficients des matières.'),
   );
 }
 
-export function progressView(child: Child, actions: Actions): HTMLElement {
+/** Progrès d'un élève, affiché dans l'onglet Notes (troisième vue). */
+function progressBody(child: Child): HTMLElement {
   const m = metrics(child.notes);
   const groups = subjectGroups(child.notes)
     .map((g) => ({ g, m: metrics(g.notes) }))
@@ -625,10 +694,7 @@ export function progressView(child: Child, actions: Actions): HTMLElement {
   const levels = [1, 2, 3, 4].map((l) => skills.filter((s) => s.level === l).length);
   const labels = ['Insuffisante', 'Fragile', 'Satisfaisante', 'Très bonne'];
   return h(
-    'div.screen',
-    { style: accent(child.id) },
-    h('header.top', h('div.top-text', h('h1.title', 'Progrès'), h('p.subtitle', child.name))),
-    childSwitcher(actions),
+    'div.progress',
     h(
       'dl.stats',
       h('div', h('dt', 'Moyenne'), h('dd', average(m.average))),

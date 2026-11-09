@@ -1,8 +1,10 @@
 /**
  * Point d'entrée du navigateur : session, navigation par onglets, chargements.
  *
- * Navigation : l'ancre de l'URL (#accueil, #devoirs, #notes, #progres, #moi)
- * désigne l'onglet ; le bouton retour du téléphone fonctionne donc naturellement.
+ * Navigation : l'ancre de l'URL (#accueil, #devoirs, #notes, #messages,
+ * #vie-scolaire, #moi…) désigne l'écran ; le bouton retour du téléphone
+ * fonctionne donc naturellement. Les onglets diffèrent selon le profil :
+ * l'élève a son cartable, les parents la vie scolaire de la fratrie.
  */
 import { api, ApiError } from './api.ts';
 import { clear, h, icon, tap } from './dom.ts';
@@ -11,7 +13,9 @@ import { resetData, state, type Route } from './state.ts';
 import { bagKey, bagView, kitSheet } from './bag-view.ts';
 import { meView, sheet } from './settings.ts';
 import { parisHour } from '../shared/metrics.ts';
-import { childColor, familyHome, gradesView, progressView, studentHome, tasksView, type Actions } from './views.ts';
+import { childColor, familyHome, gradesView, studentHome, tasksView, type Actions } from './views.ts';
+import { lifeView } from './life-view.ts';
+import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
 const root = document.getElementById('app') as HTMLElement;
@@ -22,12 +26,39 @@ const HASH: Record<Route, string> = {
   tasks: 'devoirs',
   grades: 'notes',
   progress: 'progres',
+  messages: 'messages',
+  message: 'message',
+  life: 'vie-scolaire',
   me: 'moi',
 };
 
+/** Couleurs des ciels pour la barre d'état du téléphone (mêmes valeurs que la feuille de style). */
+const SKY: Record<string, [string, string]> = {
+  comete: ['#4947c8', '#4d4c8e'],
+  soleil: ['#b07212', '#856535'],
+  lagon: ['#0d7784', '#256e76'],
+  corail: ['#b13761', '#85445c'],
+  menthe: ['#197a5b', '#2d6e58'],
+  prune: ['#6d3eb2', '#624e8e'],
+};
+
 function routeFromHash(): Route {
-  const key = location.hash.replace('#', '').split('/')[0] ?? '';
-  return (Object.entries(HASH).find(([, v]) => v === key)?.[0] as Route) || 'home';
+  const [key = '', ...rest] = location.hash.replace('#', '').split('/');
+  const route = (Object.entries(HASH).find(([, v]) => v === key)?.[0] as Route) || 'home';
+  if (route === 'message') {
+    try {
+      state.mailOpen = decodeURIComponent(rest.join('/'));
+    } catch {
+      state.mailOpen = null;
+    }
+    return state.mailOpen ? 'message' : 'messages';
+  }
+  // Les progrès sont la troisième vue de l'onglet Notes.
+  if (route === 'progress') {
+    state.notesMode = 'progress';
+    return 'grades';
+  }
+  return route;
 }
 
 function applyPrefs(): void {
@@ -36,11 +67,23 @@ function applyPrefs(): void {
   doc.dataset.theme = me?.prefs.theme ?? 'auto';
   doc.dataset.reading = me?.prefs.reading ?? 'standard';
   doc.style.setProperty('--me', `var(--c-${me?.color ?? 'comete'})`);
+  themeColor(me?.color ?? 'comete');
+}
+
+/** Barre d'état du téléphone à la couleur du ciel de l'écran affiché. */
+function themeColor(color: string): void {
+  const doc = document.documentElement;
   const dark =
     doc.dataset.theme === 'dark' ||
-    (doc.dataset.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]:not([media])')?.remove();
-  document.head.append(h('meta', { name: 'theme-color', content: dark ? '#0D1026' : '#F3F5FA' }));
+    (doc.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  const content = (SKY[color] ?? SKY.comete ?? ['#4947c8', '#4d4c8e'])[dark ? 1 : 0];
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
+  if (!meta) {
+    for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.remove();
+    meta = h('meta', { name: 'theme-color', content });
+    document.head.append(meta);
+  }
+  if (meta.content !== content) meta.content = content;
 }
 
 let toastTimer = 0;
@@ -71,6 +114,9 @@ async function loadData(refresh = false): Promise<void> {
       for (const id of ids) state.homework.delete(id);
       toast('Données à jour.');
     }
+    // Pastille de l'onglet Messages : boîte principale chargée en arrière-plan.
+    const scope = mailScope();
+    if (scope && !state.mail.has(scope)) actions.loadMail(scope);
     if (data.fresh.length && !state.seenSent) {
       state.seenSent = true;
       window.setTimeout(() => void api.seen().catch(() => undefined), 4000);
@@ -98,6 +144,7 @@ const actions: Actions = {
   go(route, childId) {
     if (childId) state.selected = childId;
     state.openTask = null;
+    if (route === 'grades' || route === 'progress') state.notesMode = route === 'progress' ? 'progress' : 'recent';
     const target = '#' + HASH[route as Route];
     if (location.hash === target) render();
     else location.hash = target;
@@ -181,6 +228,8 @@ const actions: Actions = {
   refresh() {
     tap();
     state.bags.clear();
+    state.lives.clear();
+    state.mail.clear();
     void loadData(true);
   },
   loadBag(childId, date) {
@@ -231,38 +280,188 @@ const actions: Actions = {
     });
   },
 
+  loadMail(scope, refresh = false) {
+    const current = state.mail.get(scope);
+    if (current?.loading) return;
+    const entry = { value: current?.value ?? null, loading: true, error: null as string | null };
+    state.mail.set(scope, entry);
+    if (refresh) queueMicrotask(render);
+    api
+      .messages(scope === 'family' ? null : scope, refresh)
+      .then((list) => {
+        entry.value = list;
+        if (scope === mailScope()) state.unread = list.unread;
+      })
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) return void boot();
+        entry.error = e instanceof ApiError ? e.message : 'Messages indisponibles.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+  openMessage(key) {
+    location.hash = '#message/' + encodeURIComponent(key);
+    window.scrollTo({ top: 0 });
+  },
+  loadMessage(key) {
+    const current = state.mailDetail.get(key);
+    if (current?.loading) return;
+    const entry = {
+      value: current?.value ?? null,
+      loading: true,
+      error: null as string | null,
+      time: current?.time ?? 0,
+    };
+    state.mailDetail.set(key, entry);
+    queueMicrotask(render);
+    api
+      .message(key)
+      .then((detail) => {
+        entry.value = detail;
+        entry.time = Date.now();
+        // Message ouvert : plus « nouveau » dans les listes déjà chargées.
+        for (const [scope, list] of state.mail) {
+          const item = list.value?.items.find((i) => i.key === key);
+          if (!item?.isNew || !list.value) continue;
+          item.isNew = false;
+          list.value.unread = Math.max(0, list.value.unread - 1);
+          if (scope === mailScope()) state.unread = list.value.unread;
+        }
+      })
+      .catch((e) => {
+        // Partage retiré ou message disparu : on n'affiche plus l'ancienne copie.
+        if (e instanceof ApiError && (e.status === 404 || e.status === 403)) entry.value = null;
+        entry.error = e instanceof ApiError ? e.message : 'Message indisponible.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+  share(key, childIds) {
+    const detail = state.mailDetail.get(key)?.value;
+    const previous = detail?.sharedWith ?? [];
+    const apply = (ids: string[]) => {
+      if (detail) detail.sharedWith = ids;
+      for (const list of state.mail.values()) {
+        const item = list.value?.items.find((i) => i.key === key);
+        if (item) item.sharedWith = ids;
+      }
+    };
+    apply(childIds);
+    render();
+    api
+      .share(key, childIds)
+      .then((r) => {
+        apply(r.sharedWith);
+        // Les boîtes des enfants concernés seront relues à leur prochaine ouverture.
+        for (const id of new Set([...previous, ...r.sharedWith])) state.mail.delete(id);
+        toast(r.sharedWith.length ? 'Message partagé.' : 'Partage retiré.');
+        render();
+      })
+      .catch((e) => {
+        apply(previous);
+        toast(e instanceof ApiError ? e.message : 'Partage non enregistré.');
+        render();
+      });
+  },
+  loadLife(childId, refresh = false) {
+    const current = state.lives.get(childId);
+    if (current?.loading) return;
+    const entry = { value: current?.value ?? null, loading: true, error: null as string | null };
+    state.lives.set(childId, entry);
+    if (refresh) queueMicrotask(render);
+    api
+      .schoolLife(childId, refresh)
+      .then((life) => {
+        entry.value = life;
+      })
+      .catch((e) => {
+        entry.error = e instanceof ApiError ? e.message : 'Vie scolaire indisponible.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+
   rerender: () => render(),
 };
 
 /* ---------- Rendu ---------- */
 
-function tabBar(): HTMLElement {
-  const me = state.session?.me;
-  const parent = me?.role === 'parent';
-  const tabs: [Route, string, string][] = [
-    ['home', parent ? 'Famille' : 'Accueil', parent ? 'family' : 'home'],
-    ['bag', 'Cartable', 'bag'],
-    ['tasks', 'Devoirs', 'tasks'],
-    ['grades', 'Notes', 'grades'],
-    ['progress', 'Progrès', 'chart'],
-  ];
-  const current = state.route === 'child' ? 'home' : state.route;
-  return h(
-    'nav.tabbar',
-    { 'aria-label': 'Navigation principale' },
-    tabs.map(([route, label, ico]) =>
-      h(
-        `a.tab${current === route ? '.is-active' : ''}`,
-        {
-          href: '#' + HASH[route],
-          'aria-current': current === route ? 'page' : null,
-          onclick: () => tap(5),
-        },
-        icon(ico, 24),
-        h('span', label),
+function tabs(): [Route, string, string][] {
+  const parent = state.session?.me?.role === 'parent';
+  return parent
+    ? [
+        ['home', 'Famille', 'family'],
+        ['messages', 'Messages', 'mail'],
+        ['life', 'Vie sco', 'shield'],
+        ['tasks', 'Devoirs', 'tasks'],
+        ['grades', 'Notes', 'grades'],
+      ]
+    : [
+        ['home', 'Accueil', 'home'],
+        ['bag', 'Cartable', 'bag'],
+        ['tasks', 'Devoirs', 'tasks'],
+        ['grades', 'Notes', 'grades'],
+        ['messages', 'Messages', 'mail'],
+      ];
+}
+
+function currentTab(): Route {
+  const r = state.route;
+  if (r === 'child') return 'home';
+  if (r === 'message') return 'messages';
+  if (r === 'progress') return 'grades';
+  if (r === 'life' && state.session?.me?.role !== 'parent') return 'home';
+  if (r === 'bag' && state.session?.me?.role === 'parent') return 'home';
+  return r;
+}
+
+/**
+ * Barre d'onglets flottante (rail vertical sur grand écran). Elle reste dans la
+ * page d'un rendu à l'autre : seuls l'onglet actif, la bulle qui glisse vers lui
+ * et les pastilles changent, ce qui permet l'animation.
+ */
+function updateTabBar(shell: HTMLElement): void {
+  const list = tabs();
+  const signature = list.map((t) => t[0]).join(',');
+  let bar = shell.querySelector<HTMLElement>('.tabbar');
+  if (!bar || bar.dataset.tabs !== signature) {
+    bar?.remove();
+    bar = h(
+      'nav.tabbar',
+      { 'aria-label': 'Navigation principale', dataset: { tabs: signature } },
+      h('span.tab-blob', { 'aria-hidden': 'true' }),
+      list.map(([route, label, ico]) =>
+        h(
+          'a.tab',
+          { href: '#' + HASH[route], dataset: { route }, onclick: () => tap(5) },
+          h('span.tab-icon', icon(ico, 24), h('span.tab-badge', { hidden: true })),
+          h('span.tab-label', label),
+        ),
       ),
-    ),
-  );
+    );
+    shell.append(bar);
+  }
+  const current = currentTab();
+  const index = list.findIndex(([r]) => r === current);
+  bar.style.setProperty('--i', String(Math.max(0, index)));
+  bar.classList.toggle('has-active', index >= 0);
+  for (const a of bar.querySelectorAll<HTMLAnchorElement>('.tab')) {
+    const active = a.dataset.route === current;
+    a.classList.toggle('is-active', active);
+    if (active) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+    const badge = a.querySelector<HTMLElement>('.tab-badge');
+    if (!badge) continue;
+    const count = a.dataset.route === 'messages' ? state.unread : 0;
+    badge.hidden = count === 0;
+    badge.textContent = count > 9 ? '9+' : String(count);
+  }
 }
 
 function waiting(text: string): HTMLElement {
@@ -275,6 +474,7 @@ function currentView(): HTMLElement {
   if (state.route === 'me')
     return meView({
       rerender: render,
+      back: () => actions.go('home'),
       reloadSession: async () => {
         state.session = await api.session();
         applyPrefs();
@@ -310,6 +510,8 @@ function currentView(): HTMLElement {
     );
   }
   if (state.route === 'home' && me.role === 'parent') return familyHome(actions);
+  if (state.route === 'messages') return messagesView(actions);
+  if (state.route === 'message' && state.mailOpen) return messageView(state.mailOpen, actions);
   const child = children.find((c) => c.id === state.selected) ?? children[0];
   if (!child) return familyHome(actions);
   switch (state.route) {
@@ -318,13 +520,20 @@ function currentView(): HTMLElement {
     case 'tasks':
       return tasksView(child, actions);
     case 'grades':
-      return gradesView(child, actions);
     case 'progress':
-      return progressView(child, actions);
+      return gradesView(child, actions);
+    case 'life':
+      return lifeView(child, actions);
     default:
       return studentHome(child, actions, me.role === 'parent');
   }
 }
+
+/** Écran affiché : sert à ne jouer l'animation d'entrée qu'au changement d'écran. */
+function screenKey(): string {
+  return [state.route, state.selected, state.mailOpen, state.route === 'messages' ? state.mailScope : ''].join('|');
+}
+let lastScreen = '';
 
 let rendering = false;
 function render(): void {
@@ -335,16 +544,31 @@ function render(): void {
     let shell = root.querySelector<HTMLElement>('.shell');
     if (!shell) {
       clear(root);
-      shell = h('div.shell', h('main.view', { id: 'view' }), tabBar());
+      shell = h('div.shell', h('main.view', { id: 'view' }));
       root.append(shell);
+      lastScreen = '';
     }
     const view = shell.querySelector('.view') as HTMLElement;
+    const key = screenKey();
+    const screen = currentView();
+    if (key !== lastScreen) screen.classList.add('is-entering');
+    lastScreen = key;
     clear(view);
-    view.append(currentView());
-    shell.querySelector('.tabbar')?.replaceWith(tabBar());
+    view.append(screen);
+    updateTabBar(shell);
     const sel = state.selected;
-    const own = state.route === 'me' || state.route === 'home' || state.session.me.role !== 'parent' || !sel;
-    shell.style.setProperty('--accent', `var(--c-${own ? state.session.me.color : childColor(sel)})`);
+    const own =
+      state.route === 'me' ||
+      state.route === 'home' ||
+      state.route === 'messages' ||
+      state.route === 'message' ||
+      state.session.me.role !== 'parent' ||
+      !sel;
+    const color = own ? state.session.me.color : childColor(sel);
+    shell.style.setProperty('--accent', `var(--c-${color})`);
+    // Un écran peut imposer la couleur d'un élève (boîte d'un enfant, message de sa messagerie).
+    const forced = /--accent:\s*var\(--c-(\w+)\)/.exec(screen.getAttribute('style') ?? '')?.[1];
+    themeColor(forced ?? color);
     shell.classList.toggle('is-refreshing', state.dataLoading);
   } finally {
     rendering = false;

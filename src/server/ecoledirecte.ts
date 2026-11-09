@@ -42,11 +42,36 @@ import type {
   Homework,
   HomeworkPage,
   Course,
+  LifeEvent,
+  LifeKind,
+  MailFile,
   Note,
   Period,
   SchoolInfo,
+  SchoolLife,
   Skill,
 } from '../shared/types.ts';
+
+/** Message tel que lu sur ÉcoleDirecte, avant les droits et repères propres à Orbite. */
+export interface EdMail {
+  id: string;
+  subject: string;
+  from: string;
+  fromRole: 'teacher' | 'staff' | 'other';
+  date: string;
+  read: boolean;
+  files: MailFile[];
+}
+
+export interface EdMailDetail extends EdMail {
+  text: string;
+}
+
+export interface EdFile {
+  type: string;
+  name: string;
+  body: Buffer;
+}
 
 const BASE = 'https://api.ecoledirecte.com/v3/';
 // Les en-têtes (User-Agent, Origin, Referer) imitent le site officiel pour être traités comme lui.
@@ -625,6 +650,133 @@ export class EcoleDirecte {
   }
 
   /**
+   * Compte famille (parent) : la messagerie famille porte son identifiant. Le
+   * contexte est activé avant l'appel, comme pour les élèves.
+   */
+  private async forFamily<T>(run: (familyIds: Id[]) => Promise<T>): Promise<T> {
+    if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
+    const account = this.accounts.find((a) => a.typeCompte !== 'E');
+    if (!account) throw new EdError('Aucun compte famille : la messagerie parent est indisponible.', 404);
+    await this.switchContext(account, 'Contexte du compte famille indisponible.');
+    const ids = [account.id, account.idLogin].filter((v, i, all): v is Id => isId(v) && all.indexOf(v) === i);
+    return run(ids);
+  }
+
+  /**
+   * Messages reçus de l'année en cours, sans leur contenu : messagerie famille
+   * (`childId === null`) ou messagerie de l'élève lue depuis le compte parent.
+   * La liste ne modifie rien ; seule l'ouverture d'un message (`mail`) peut le
+   * marquer comme lu sur ÉcoleDirecte, comme sur le site.
+   */
+  mailbox(childId: string | null): Promise<EdMail[]> {
+    const query =
+      'messages.awp?force=false&typeRecuperation=received&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get';
+    const data = { anneeMessages: schoolYear() };
+    if (childId === null)
+      return this.forFamily(async (ids) => {
+        let last: unknown;
+        // Selon les comptes, la messagerie famille répond à l'identifiant du compte ou à celui de connexion.
+        for (const id of ids) {
+          try {
+            const body = await this.request<unknown>(`familles/${encodeURIComponent(id)}/${query}`, data);
+            return mailRecords(body.data).map(normalizeMail);
+          } catch (e) {
+            if ((e as EdError).status === 401) throw e;
+            last = e;
+          }
+        }
+        throw last instanceof EdError ? last : new EdError('Messagerie famille indisponible.');
+      });
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<unknown>(`eleves/${encodeURIComponent(studentId)}/${query}`, data);
+      return mailRecords(body.data).map(normalizeMail);
+    });
+  }
+
+  /** Message complet (texte brut) ; `id` vient de `mailbox`. */
+  mail(childId: string | null, id: string): Promise<EdMailDetail> {
+    if (!/^\d{1,12}$/.test(id)) return Promise.reject(new EdError('Message introuvable.', 404));
+    const path = `messages/${id}.awp?verbe=get&mode=destinataire`;
+    const data = { anneeMessages: schoolYear() };
+    const read = (body: EdBody<unknown>) => {
+      const raw = (body.data ?? {}) as RawMail;
+      const text =
+        typeof raw.content === 'string' && raw.content
+          ? homeworkText(raw.content)
+          : typeof raw.contentHtml === 'string'
+            ? htmlText(raw.contentHtml)
+            : '';
+      return { ...normalizeMail({ ...raw, id: raw.id ?? id }), text };
+    };
+    if (childId === null)
+      return this.forFamily(async (ids) => {
+        let last: unknown;
+        for (const fid of ids) {
+          try {
+            return read(await this.request<unknown>(`familles/${encodeURIComponent(fid)}/${path}`, data));
+          } catch (e) {
+            if ((e as EdError).status === 401) throw e;
+            last = e;
+          }
+        }
+        throw last instanceof EdError ? last : new EdError('Message indisponible.');
+      });
+    return this.forChild(childId, async (studentId) =>
+      read(await this.request<unknown>(`eleves/${encodeURIComponent(studentId)}/${path}`, data)),
+    );
+  }
+
+  /** Pièce jointe d'un message, limitée à 20 Mo. */
+  async mailFile(fileId: string): Promise<EdFile> {
+    if (this.state !== 'authenticated') throw new EdError('Reconnectez-vous.', 401);
+    if (!/^\d{1,12}$/.test(fileId)) throw new EdError('Pièce jointe introuvable.', 404);
+    const response = await this.send(
+      `telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&anneeMessages=${schoolYear()}`,
+      { forceDownload: 0 },
+      false,
+    );
+    const type = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0]?.trim() ?? '';
+    if (/json|text\/html/i.test(type)) {
+      let code: unknown;
+      try {
+        code = ((await response.json()) as EdBody).code;
+      } catch {}
+      if ([520, 521, 525].includes(Number(code))) {
+        this.clear();
+        throw new EdError('Votre session a expiré. Reconnectez-vous.', 401, code);
+      }
+      throw new EdError('Pièce jointe indisponible sur ÉcoleDirecte.', 404);
+    }
+    const limit = 20 * 1024 * 1024;
+    if (Number(response.headers.get('content-length') || 0) > limit)
+      throw new EdError('Pièce jointe trop volumineuse pour Orbite (20 Mo au plus).', 413);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    if (response.body)
+      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+        size += chunk.byteLength;
+        if (size > limit) throw new EdError('Pièce jointe trop volumineuse pour Orbite (20 Mo au plus).', 413);
+        chunks.push(Buffer.from(chunk));
+      }
+    return {
+      type: type.toLowerCase(),
+      name: dispositionName(response.headers.get('content-disposition')),
+      body: Buffer.concat(chunks),
+    };
+  }
+
+  /** Absences, retards, punitions, sanctions et encouragements d'un élève. */
+  schoolLifeForChild(childId: string): Promise<SchoolLife> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<RawSchoolLife>(
+        `eleves/${encodeURIComponent(studentId)}/viescolaire.awp?verbe=get`,
+        {},
+      );
+      return normalizeSchoolLife(body.data);
+    });
+  }
+
+  /**
    * Devoirs non faits à partir d'aujourd'hui (heure de Paris), en deux temps :
    * - `cursor === null` : premier affichage, tous les devoirs des 30 prochains
    *   jours, et un index rafraîchi s'il date de plus de 60 s ;
@@ -994,7 +1146,15 @@ export function homeworkDone(value: unknown): boolean | null {
  */
 export function homeworkText(value: unknown): string {
   if (typeof value !== 'string' || !value) return '';
-  const html = Buffer.from(value, 'base64').toString('utf8');
+  return htmlText(Buffer.from(value, 'base64').toString('utf8'));
+}
+
+/**
+ * HTML vers texte brut (contenus de devoirs et de messages). Les liens gardent
+ * leur adresse entre parenthèses, les puces deviennent « • », les paragraphes
+ * restent séparés par une ligne.
+ */
+export function htmlText(html: string): string {
   const entities: Record<string, string> = {
     amp: '&',
     lt: '<',
@@ -1016,7 +1176,13 @@ export function homeworkText(value: unknown): string {
   };
   return html
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<br\s*\/?\s*>|<\/(?:p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_all, url: string, label: string) => {
+      const text = label.replace(/<[^>]*>/g, '').trim();
+      if (!/^https?:\/\//i.test(url)) return text;
+      return !text || text === url ? ` ${url} ` : `${text} (${url})`;
+    })
+    .replace(/<li\b[^>]*>/gi, '• ')
+    .replace(/<br\s*\/?\s*>|<\/(?:p|div|li|h[1-6]|tr)>/gi, '\n')
     .replace(/<[^>]*>/g, '')
     .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, key: string) => {
       if (key[0] !== '#') return entities[key] ?? all;
@@ -1046,4 +1212,186 @@ function sessionIdentity(s: RawStudent): SessionIdentity {
     photo: photoUrl(s.photo || s.profile?.photo),
     classe: identityClasse(s),
   };
+}
+
+/* ---------- Messagerie ---------- */
+
+/** Année scolaire « AAAA-AAAA » de la date donnée (heure de Paris), qui bascule au 1er août. */
+export function schoolYear(now = new Date()): string {
+  const [y = 2000, m = 9] = parisDate(now).split('-').map(Number);
+  const start = m >= 8 ? y : y - 1;
+  return `${start}-${start + 1}`;
+}
+
+/** Nom de fichier annoncé par `Content-Disposition`, débarrassé de tout chemin. */
+export function dispositionName(header: string | null): string {
+  if (!header) return 'piece-jointe';
+  let name = '';
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header)?.[1];
+  if (star) {
+    try {
+      name = decodeURIComponent(star.trim());
+    } catch {}
+  }
+  if (!name) name = /filename\s*=\s*"?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? '';
+  name =
+    name
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/[\p{Cc}"]/gu, '') ?? '';
+  return name.slice(0, 120) || 'piece-jointe';
+}
+
+interface RawMail {
+  id?: Id;
+  subject?: string;
+  date?: string;
+  read?: unknown;
+  content?: unknown;
+  contentHtml?: unknown;
+  from?: {
+    name?: string;
+    nom?: string;
+    prenom?: string;
+    particule?: string;
+    civilite?: string;
+    role?: string;
+    fonctionPersonnel?: string;
+  };
+  files?: { id?: Id; libelle?: string; name?: string }[];
+  attachments?: { id?: Id; libelle?: string; name?: string }[];
+}
+
+/** Messages reçus, quel que soit le format de réponse (`messages.received` ou `messages`). */
+function mailRecords(data: unknown): RawMail[] {
+  const messages = (data as { messages?: unknown } | null)?.messages;
+  if (Array.isArray(messages)) return records<RawMail>(messages);
+  return records<RawMail>((messages as { received?: unknown } | null)?.received);
+}
+
+export function normalizeMail(raw: RawMail): EdMail {
+  const f = raw.from ?? {};
+  const person = [f.civilite, f.prenom, f.particule, f.nom]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const name = String(f.name ?? '').trim() || person || 'Établissement';
+  const job = String(f.fonctionPersonnel ?? '').trim();
+  const role = String(f.role ?? '').toLowerCase();
+  const date = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(String(raw.date ?? ''));
+  const files = [
+    ...records<NonNullable<RawMail['files']>[number]>(raw.files),
+    ...records<NonNullable<RawMail['attachments']>[number]>(raw.attachments),
+  ]
+    .filter((x) => isId(x.id) && /^\d{1,12}$/.test(String(x.id)))
+    .map((x) => ({ id: String(x.id), name: String(x.libelle || x.name || 'Pièce jointe').trim() }));
+  return {
+    id: String(raw.id ?? ''),
+    subject: String(raw.subject ?? '').trim() || '(Sans objet)',
+    from: job && !name.includes(job) ? `${name} · ${job}` : name,
+    fromRole: role === 'p' || role === 'teacher' ? 'teacher' : role === 'a' || role === 'admin' ? 'staff' : 'other',
+    date: date?.[1] && date[2] ? `${date[1]}T${date[2]}` : '',
+    read: raw.read === true || raw.read === 1 || raw.read === '1',
+    files: files.filter((x, i) => files.findIndex((y) => y.id === x.id) === i),
+  };
+}
+
+/* ---------- Vie scolaire ---------- */
+
+interface RawLifeEntry {
+  id?: Id;
+  typeElement?: string;
+  date?: string;
+  displayDate?: string;
+  libelle?: string;
+  motif?: string;
+  justifie?: unknown;
+  typeJustification?: string;
+  par?: string;
+  commentaire?: string;
+  aFaire?: string;
+  dateDeroulement?: string;
+}
+
+interface RawSchoolLife {
+  absencesRetards?: RawLifeEntry[];
+  sanctionsEncouragements?: RawLifeEntry[];
+  parametrage?: {
+    absenceCommentaire?: boolean;
+    retardCommentaire?: boolean;
+    sanctionsVisible?: boolean;
+    sanctionParQui?: boolean;
+    sanctionCommentaire?: boolean;
+    encouragementsVisible?: boolean;
+    encouragementParQui?: boolean;
+    encouragementCommentaire?: boolean;
+  };
+}
+
+function lifeKind(type: string): LifeKind {
+  const t = type.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (t.includes('retard')) return 'retard';
+  if (t.includes('absence') || t.includes('abscence')) return 'absence';
+  if (t.includes('encourag') || t.includes('felicit')) return 'encouragement';
+  if (t.includes('punition')) return 'punition';
+  if (t.includes('sanction') || t.includes('exclusion') || t.includes('avertissement')) return 'sanction';
+  return 'autre';
+}
+
+/** Texte court venu d'ÉcoleDirecte : balises retirées, majuscules intégrales adoucies (« RETENUE » → « Retenue »). */
+function lifeText(value: unknown, soften = false): string {
+  const text = htmlText(String(value ?? ''))
+    .replace(/\s*\n\s*/g, ' ')
+    .trim();
+  if (soften && text.length > 3 && text === text.toUpperCase() && /[A-ZÀ-Ý]/.test(text))
+    return text.charAt(0) + text.slice(1).toLowerCase();
+  return text;
+}
+
+/**
+ * Convertit `viescolaire.awp`. Les réglages de l'établissement sont respectés :
+ * sanctions ou encouragements masqués sur ÉcoleDirecte restent masqués, de même
+ * que l'auteur et les commentaires.
+ */
+export function normalizeSchoolLife(data: RawSchoolLife | null | undefined): SchoolLife {
+  const p = data?.parametrage ?? {};
+  const events: LifeEvent[] = [];
+  for (const [i, e] of records<RawLifeEntry>(data?.absencesRetards).entries()) {
+    const kind = lifeKind(String(e.typeElement ?? 'Absence'));
+    const pending = /attente/i.test(String(e.typeJustification ?? ''));
+    const showComment = kind === 'retard' ? p.retardCommentaire !== false : p.absenceCommentaire !== false;
+    events.push({
+      id: `ar-${String(e.id ?? i)}`,
+      kind: kind === 'retard' ? 'retard' : 'absence',
+      type: lifeText(e.typeElement) || 'Absence',
+      title: lifeText(e.libelle),
+      date: /^\d{4}-\d{2}-\d{2}/.exec(String(e.date ?? ''))?.[0] ?? null,
+      when: lifeText(e.displayDate),
+      reason: lifeText(e.motif),
+      justified: pending ? null : homeworkDone(e.justifie) === true,
+      todo: '',
+      by: '',
+      comment: showComment ? lifeText(e.commentaire) : '',
+    });
+  }
+  for (const [i, e] of records<RawLifeEntry>(data?.sanctionsEncouragements).entries()) {
+    const kind = lifeKind(String(e.typeElement ?? ''));
+    const reward = kind === 'encouragement';
+    if (reward ? p.encouragementsVisible === false : p.sanctionsVisible === false) continue;
+    events.push({
+      id: `se-${String(e.id ?? i)}`,
+      kind,
+      type: lifeText(e.typeElement) || (reward ? 'Encouragement' : 'Sanction'),
+      title: lifeText(e.libelle, true),
+      date: /^\d{4}-\d{2}-\d{2}/.exec(String(e.date ?? ''))?.[0] ?? null,
+      when: lifeText(e.dateDeroulement || e.displayDate),
+      reason: lifeText(e.motif),
+      justified: null,
+      todo: lifeText(e.aFaire),
+      by: (reward ? p.encouragementParQui : p.sanctionParQui) === false ? '' : lifeText(e.par),
+      comment: (reward ? p.encouragementCommentaire : p.sanctionCommentaire) === false ? '' : lifeText(e.commentaire),
+    });
+  }
+  events.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  return { events };
 }

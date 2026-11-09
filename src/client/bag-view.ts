@@ -6,7 +6,7 @@
 import { h, icon, tap } from './dom.ts';
 import { capitalize, longDay, relativeDay, subjectLabel } from './format.ts';
 import { state } from './state.ts';
-import { accent, childSwitcher, emptyState, sectionHead, subjectMark, taskRow, type Actions } from './views.ts';
+import { accent, emptyState, sectionHead, sky, subjectMark, taskRow, type Actions } from './views.ts';
 import { bagCourses, bagDate, defaultItems, subjectKey } from '../shared/bag.ts';
 import { nextSchoolDay, parisDate } from '../shared/metrics.ts';
 import type { BagDay, BagItem, Child, Course, Kit } from '../shared/types.ts';
@@ -85,14 +85,6 @@ export function bagView(child: Child, actions: Actions): HTMLElement {
   const bag = state.bags.get(key);
   if (!bag) actions.loadBag(child.id, state.bagDay);
   const day = bag?.day ?? null;
-  const top = h(
-    'header.top',
-    h(
-      'div.top-text',
-      h('h1.title', state.session?.me?.role === 'child' ? 'Mon cartable' : 'Cartable'),
-      h('p.subtitle', day ? capitalize(longDay(day.date)) : child.name),
-    ),
-  );
   const picker = h(
     'div.segmented',
     { role: 'tablist', 'aria-label': 'Jour' },
@@ -112,13 +104,18 @@ export function bagView(child: Child, actions: Actions): HTMLElement {
       ),
     ),
   );
+  const parent = state.session?.me?.role === 'parent';
+  const top = sky({
+    title: parent ? `Cartable de ${child.name}` : 'Mon cartable',
+    subtitle: day ? capitalize(longDay(day.date)) : null,
+    back: parent ? () => actions.go('child', child.id) : null,
+    extra: [picker],
+  });
   if (!day)
     return h(
       'div.screen.bag',
       { style: accent(child.id) },
       top,
-      childSwitcher(actions),
-      picker,
       bag?.error
         ? h(
             'div.inline-error',
@@ -162,10 +159,8 @@ export function bagView(child: Child, actions: Actions): HTMLElement {
     'div.screen.bag',
     { style: accent(child.id) },
     top,
-    childSwitcher(actions),
-    picker,
     h(
-      `section.bag-hero${allPacked ? '.is-ready' : ''}`,
+      `section.bag-hero.lift${allPacked ? '.is-ready' : ''}`,
       h(
         'div.bag-hero-text',
         h('p.bag-day', day.date === today ? 'Aujourd’hui' : capitalize(weekday(day.date))),

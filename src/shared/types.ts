@@ -278,3 +278,73 @@ export interface BagDay {
   timetableError: string | null;
   homeworkError: string | null;
 }
+
+/* ---------- Messagerie (lecture seule) ---------- */
+
+export interface MailFile {
+  id: string;
+  name: string;
+  /** Lien de téléchargement signé, valable quelques minutes (détail d'un message). */
+  url?: string;
+}
+
+/**
+ * Message reçu de l'établissement. `key` identifie la boîte et le message :
+ * `f.<id>` pour la messagerie famille (compte parent), `s.<élève>.<id>` pour la
+ * messagerie d'un élève, lue depuis le compte parent.
+ */
+export interface MailItem {
+  key: string;
+  box: 'family' | 'student';
+  childId: string | null;
+  subject: string;
+  from: string;
+  fromRole: 'teacher' | 'staff' | 'other';
+  /** « AAAA-MM-JJTHH:MM », heure locale d'ÉcoleDirecte. */
+  date: string;
+  files: MailFile[];
+  /** Pas encore ouvert dans Orbite par ce membre. */
+  isNew: boolean;
+  /** Messages famille vus par un parent : élèves avec qui le message est partagé. */
+  sharedWith?: string[];
+}
+
+export interface MailDetail extends MailItem {
+  /** Contenu en texte brut (paragraphes séparés par des retours à la ligne). */
+  text: string;
+}
+
+export interface MailList {
+  items: MailItem[];
+  /** Raison pour laquelle une boîte n'a pas pu être lue (droits de l'établissement…). */
+  unavailable: string | null;
+  unread: number;
+}
+
+/* ---------- Vie scolaire ---------- */
+
+export type LifeKind = 'absence' | 'retard' | 'punition' | 'sanction' | 'encouragement' | 'autre';
+
+/** Absence, retard, punition, sanction ou encouragement, tels qu'affichés sur ÉcoleDirecte. */
+export interface LifeEvent {
+  id: string;
+  kind: LifeKind;
+  /** Libellé d'origine du type (« Punition », « Retard »…). */
+  type: string;
+  /** « Retenue », « 2 demi-journées », « 00:55 »… */
+  title: string;
+  date: string | null;
+  /** Créneau ou déroulement en clair (« le lundi 13 octobre de 09:00 à 09:55 »). */
+  when: string;
+  reason: string;
+  /** Absences et retards : justifié, en attente (`null`) ou non. */
+  justified: boolean | null;
+  /** Durée ou travail à faire pour une punition (« 1 heure »). */
+  todo: string;
+  by: string;
+  comment: string;
+}
+
+export interface SchoolLife {
+  events: LifeEvent[];
+}
