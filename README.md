@@ -19,6 +19,7 @@ Version familiale d'[Orbite](https://github.com/thomasfaure/orbite-ed) (Thomas F
 - **Notifications** sur le téléphone : nouvelle note (la matière, jamais la valeur), message du collège, message partagé par un parent, vie scolaire (absences et sanctions aux parents seulement, encouragements aussi à l'élève), rappel « prépare ton sac » à 19 h la veille d'un jour de classe, récap du dimanche soir. Rien entre 22 h et 7 h. Chaque profil choisit ce qu'il reçoit dans Moi → Notifications. Sur iPhone, Orbite doit d'abord être ajoutée à l'écran d'accueil (iOS 16.4 ou plus).
 - Mode lecture OpenDyslexic ou grands caractères, thème clair ou sombre, couleur personnelle.
 - Conseil du jour rédigé par Claude, facultatif (statistiques anonymes uniquement).
+- Soutien scolaire (maths, français, anglais), activé par un parent pour chaque enfant : jusqu'à 3 modules de 10 minutes par jour, choisis d'après les compétences et moyennes ÉcoleDirecte, avec révisions espacées. Les exercices sont rédigés par Claude (clé requise) et corrigés par le serveur ; aucune comparaison entre enfants.
 
 Lecture seule : Orbite n'écrit rien sur ÉcoleDirecte (seule l'ouverture d'un message le marque comme lu). Les cases cochées et les partages restent dans Orbite.
 
@@ -68,6 +69,7 @@ Chaque modification poussée sur `main` publie une nouvelle image `ghcr.io/julie
 - Hors de la maison, un appareil inconnu ne voit pas les prénoms : il faut taper le sien.
 - Contrôle de l'hôte et de l'origine, en-tête anti-CSRF obligatoire, cookie HttpOnly SameSite=Strict, CSP stricte, aucune ressource externe sauf les photos d'ÉcoleDirecte.
 - Notifications : chiffrées de bout en bout (Web Push, RFC 8291), envoyées seulement vers les services push connus (Apple, Google, Mozilla, Microsoft). Un abonnement est lié à l'appareil connecté : verrouiller le profil l'arrête.
+- Soutien scolaire : à Claude ne partent que la matière, le niveau de classe (« 6e »), l'intitulé de la compétence ÉcoleDirecte et une difficulté ; ni nom, ni note. Les bonnes réponses restent sur le serveur jusqu'à la correction, et la mémoire de l'élève vit dans le coffre chiffré (`support.enc`).
 - Conseils IA : seuls des agrégats (moyennes, tendance, matières) partent vers l'API Anthropic ; jamais de nom, de photo, d'intitulé ni de devoir.
 
 L'API ÉcoleDirecte est privée et peut changer ; ce projet n'est pas affilié à ÉcoleDirecte.

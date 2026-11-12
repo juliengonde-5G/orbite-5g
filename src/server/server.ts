@@ -30,8 +30,9 @@ import { EdError } from './ecoledirecte.ts';
 import { EdService, type EdClient } from './ed-service.ts';
 import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
-import { DemoEd } from './demo.ts';
+import { DemoEd, demoExerciseWriter } from './demo.ts';
 import { Notifier } from './notifier.ts';
+import { ClaudeExerciseWriter, Support, SupportError } from './support.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
   BagDay,
@@ -163,6 +164,8 @@ export interface AppOptions {
   refreshFloor?: number;
   /** Notificateur imposé (tests). */
   notifier?: Notifier;
+  /** Soutien scolaire imposé (tests). */
+  support?: Support;
 }
 
 interface SeenDoc {
@@ -314,6 +317,7 @@ export function createApp(options: AppOptions): http.Server {
     return 'mailto:orbite@example.com';
   })();
   const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject });
+  const support = options.support ?? new Support(vault, new ClaudeExerciseWriter(coach));
   const pushTimer = options.background ? notifier.start() : undefined;
   const loginAttempts: number[] = [];
 
@@ -388,6 +392,29 @@ export function createApp(options: AppOptions): http.Server {
     const { dashboard } = await ed.dashboard();
     if (!dashboard?.children.some((c) => c.id === childId)) throw new HttpError('Élève introuvable.', 404);
     return childId;
+  };
+
+  const supportChild = async (childId: string) => {
+    const { dashboard } = await ed.dashboard();
+    const child = dashboard?.children.find((c) => c.id === childId);
+    if (!child) throw new HttpError('Élève introuvable.', 404);
+    return child;
+  };
+
+  /** Les exercices se font sur le profil de l'élève : un parent active et suit, il ne répond pas à sa place. */
+  const supportPupil = async (ctx: Context): Promise<string> => {
+    const me = requireMember(ctx);
+    if (me.role !== 'child') throw new HttpError('Les modules se font depuis le profil de l’élève.', 403);
+    return canSee(me, ctx.data.childId);
+  };
+
+  const supportCall = async <T>(run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (e) {
+      if (e instanceof SupportError) throw new HttpError(e.message, e.code);
+      throw e;
+    }
   };
 
   /** Droit de lire un message : parents toujours ; élève, sa propre boîte ou ce qu'un parent lui a partagé. */
@@ -890,6 +917,39 @@ export function createApp(options: AppOptions): http.Server {
         }
       },
     ],
+    [
+      'POST /api/support',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        return support.status(childId, await supportChild(childId));
+      },
+    ],
+    [
+      'POST /api/support/enable',
+      async (ctx) => {
+        requireParent(ctx);
+        const childId = await canSee(requireMember(ctx), ctx.data.childId);
+        support.setEnabled(childId, ctx.data.enabled === true);
+        return support.status(childId, await supportChild(childId));
+      },
+    ],
+    [
+      'POST /api/support/start',
+      async (ctx) => {
+        const childId = await supportPupil(ctx);
+        return supportCall(async () => support.start(childId, await supportChild(childId), ctx.data.key));
+      },
+    ],
+    [
+      'POST /api/support/answer',
+      async (ctx) => {
+        const childId = await supportPupil(ctx);
+        return supportCall(async () =>
+          support.answer(childId, await supportChild(childId), ctx.data.sessionId, ctx.data.answers, ctx.data.seconds),
+        );
+      },
+    ],
     ['GET /api/push', async (ctx) => notifier.status(requireMember(ctx), family.deviceTag(ctx.token))],
     [
       'POST /api/push/subscribe',
@@ -1216,7 +1276,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     allowedHosts: (process.env.ORBITE_ALLOWED_HOSTS || '').split(','),
     version,
     background: true,
-    ...(process.env.ORBITE_DEMO === '1' ? { edFactory: () => new DemoEd() } : {}),
+    ...(process.env.ORBITE_DEMO === '1'
+      ? { edFactory: () => new DemoEd(), support: new Support(vault, demoExerciseWriter) }
+      : {}),
   });
   const shutdown = () => server.close(() => process.exit(0));
   process.on('SIGINT', shutdown);

@@ -3,6 +3,7 @@
  * par le serveur (protection CSRF) ; les erreurs deviennent des `ApiError`
  * dont le message est rédigé pour l'utilisateur.
  */
+import type { ModuleResult, ModuleView, SupportStatus } from '../shared/support.ts';
 import type {
   AuthResult,
   BagDay,
@@ -85,6 +86,14 @@ export const api = {
   documents: (refresh = false) => call<DocumentList>('POST', '/api/documents', { refresh }),
   lessons: (childId: string, date: string) =>
     call<{ date: string; lessons: Lesson[] }>('POST', '/api/lessons', { childId, date }),
+  support: {
+    status: (childId: string) => call<SupportStatus>('POST', '/api/support', { childId }),
+    enable: (childId: string, enabled: boolean) =>
+      call<SupportStatus>('POST', '/api/support/enable', { childId, enabled }),
+    start: (childId: string, key: string) => call<ModuleView>('POST', '/api/support/start', { childId, key }),
+    answer: (childId: string, sessionId: string, answers: (number | null)[], seconds: number) =>
+      call<ModuleResult>('POST', '/api/support/answer', { childId, sessionId, answers, seconds }),
+  },
   push: {
     status: () => call<PushStatus>('GET', '/api/push'),
     subscribe: (subscription: unknown) => call<PushStatus>('POST', '/api/push/subscribe', { subscription }),

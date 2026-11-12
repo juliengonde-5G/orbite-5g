@@ -25,6 +25,7 @@ import { familyLifeBlock, lifeCard, lifeFacts } from './life-view.ts';
 import { lessonsBody, weekStrip } from './class-view.ts';
 import { familyDocsBlock } from './docs-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
+import { trainCard } from './train-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note, Period, SubjectAverage } from '../shared/types.ts';
@@ -442,6 +443,7 @@ export function studentHome(child: Child, actions: Actions, asParent: boolean): 
       'div.flow',
       coachingLine(child, actions),
       homeworkBlock(child, actions, 'focus'),
+      trainCard(child, actions, asParent),
       !asParent && mailCard(child, actions),
       lifeCard(child, actions),
       h(

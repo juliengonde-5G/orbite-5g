@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { request } from 'node:http';
 import { createApp } from '../src/server/server.ts';
+import { Support, type Exercise } from '../src/server/support.ts';
 import { Vault } from '../src/server/vault.ts';
 import {
   EdError,
@@ -256,6 +257,9 @@ class FakeCoach implements Coach {
   async check(key: string) {
     return key.endsWith('x'.repeat(20)) ? ('refused' as const) : ('ok' as const);
   }
+  async complete() {
+    return '[]';
+  }
 }
 
 interface Client {
@@ -267,13 +271,18 @@ interface Client {
   ): Promise<{ status: number; body: any; cookie: string }>;
 }
 
-async function start(dir: string, seed = 'Camille:parent+admin, Alex:parent, Léo:enfant:5e, Nina:enfant:6e') {
+async function start(
+  dir: string,
+  seed = 'Camille:parent+admin, Alex:parent, Léo:enfant:5e, Nina:enfant:6e',
+  extra: Partial<Parameters<typeof createApp>[0]> = {},
+) {
   const server = createApp({
     vault: new Vault(dir),
     familySeed: seed,
     edFactory: () => new FakeEd(),
     coach: new FakeCoach(),
     refreshFloor: 0,
+    ...extra,
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
@@ -843,6 +852,92 @@ test('séances, documents, notifications : élève limité à son contenu, liens
     await kid.post('/api/login', { memberId: leo.id, pin: '730519' });
     assert.equal((await kid.get('/api/push')).body.subscribed, false, 'verrouiller retire l’abonnement');
   } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('soutien scolaire : le parent active, seul l’élève répond, chacun reste chez soi', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-'));
+  const saved = FakeEd.notes['1:11'];
+  FakeEd.notes['1:11'] = [
+    {
+      ...note(1, 8, '2026-11-02'),
+      skills: [{ name: 'Calculer avec des fractions', detail: '', level: 1, competenceId: 'C1' }],
+    },
+  ];
+  const exercises = (): Exercise[] =>
+    Array.from({ length: 5 }, (_, i) => ({
+      q: `Q${i}`,
+      choices: ['faux', 'vrai', 'autre'],
+      answer: 1,
+      explain: 'Parce que.',
+    }));
+  const support = new Support(new Vault(dir), { available: true, write: async () => exercises() });
+  const app = await start(dir, undefined, { support });
+  try {
+    const parent = app.browser();
+    const admin = (await parent.get('/api/session')).body.members.find((m: any) => m.admin);
+    await parent.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    await parent.post('/api/admin/ed/connect', { username: 'parent.dupont', password: 'bon', remember: true });
+    await parent.post('/api/admin/ed/verify', { choice: 0 });
+    await parent.post('/api/data', {});
+    const members = (await parent.get('/api/admin/members')).body.members;
+    const enroll = async (name: string, pin: string) => {
+      const m = members.find((x: any) => x.name === name);
+      const code = (await parent.post('/api/admin/member/code', { memberId: m.id })).body.code;
+      const phone = app.browser();
+      await phone.post('/api/activate', { memberId: m.id, code, pin });
+      return phone;
+    };
+    const leo = await enroll('Léo', '730519');
+    const nina = await enroll('Nina', '640281');
+
+    // Désactivé tant qu'un parent ne l'a pas activé ; l'élève ne s'active pas lui-même.
+    let s = await leo.post('/api/support', { childId: '1:11' });
+    assert.equal(s.status, 200);
+    assert.equal(s.body.enabled, false);
+    assert.equal((await leo.post('/api/support/enable', { childId: '1:11', enabled: true })).status, 403);
+    assert.equal(
+      (await nina.post('/api/support', { childId: '1:11' })).status,
+      404,
+      'un élève ne voit pas le soutien d’un autre',
+    );
+    s = await parent.post('/api/support/enable', { childId: '1:11', enabled: true });
+    assert.equal(s.body.enabled, true);
+    assert.ok(s.body.plan.length >= 1);
+    const key = s.body.plan[0].key as string;
+
+    // Le parent ne répond pas à la place de l'élève ; l'élève ne démarre pas le module d'un autre.
+    assert.equal((await parent.post('/api/support/start', { childId: '1:11', key })).status, 403);
+    assert.equal((await nina.post('/api/support/start', { childId: '1:11', key })).status, 404);
+
+    s = await leo.post('/api/support/start', { childId: '1:11', key });
+    assert.equal(s.status, 200);
+    assert.equal(s.body.items.length, 5);
+    assert.ok(!/answer|explain|Parce que/.test(JSON.stringify(s.body)), 'la solution reste sur le serveur');
+    const sessionId = s.body.id as string;
+    assert.equal(
+      (await nina.post('/api/support/answer', { childId: '1:11', sessionId, answers: [1, 1, 1, 1, 1] })).status,
+      404,
+    );
+    assert.equal((await leo.post('/api/support/answer', { childId: '1:11', sessionId, answers: [1] })).status, 400);
+    s = await leo.post('/api/support/answer', { childId: '1:11', sessionId, answers: [1, 1, 1, 0, 1], seconds: 380 });
+    assert.equal(s.status, 200);
+    assert.equal(s.body.right, 4);
+    assert.equal(s.body.status.doneToday, 1);
+    assert.equal(
+      (await leo.post('/api/support/answer', { childId: '1:11', sessionId, answers: [1, 1, 1, 1, 1] })).status,
+      404,
+    );
+
+    // Le parent suit les résultats sans pouvoir les modifier ; le bilan ne compare personne.
+    s = await parent.post('/api/support', { childId: '1:11' });
+    assert.equal(s.body.summary.modules, 1);
+    assert.ok(!JSON.stringify(s.body).includes('1:12'));
+    assert.equal((await app.browser().post('/api/support', { childId: '1:11' })).status, 401);
+  } finally {
+    FakeEd.notes['1:11'] = saved!;
     await app.close();
     rmSync(dir, { recursive: true, force: true });
   }
