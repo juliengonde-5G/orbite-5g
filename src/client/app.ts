@@ -19,7 +19,7 @@ import { lifeView } from './life-view.ts';
 import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
 import { docsView } from './docs-view.ts';
-import { trainView } from './train-view.ts';
+import { markSupportStale, trainView } from './train-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -114,6 +114,7 @@ async function loadData(refresh = false): Promise<void> {
     state.data = data;
     state.dataTime = Date.now();
     state.dataError = null;
+    markSupportStale();
     // Les repères « nouveau » restent visibles pendant toute la visite.
     for (const k of data.fresh) state.fresh.add(k);
     const ids = data.children.map((c) => c.id);

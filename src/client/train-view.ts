@@ -9,6 +9,7 @@
 import { api, ApiError } from './api.ts';
 import { h, icon } from './dom.ts';
 import { state } from './state.ts';
+import { parisDate } from '../shared/metrics.ts';
 import { accent, emptyState, sectionHead, sky, type Actions } from './views.ts';
 import { SUBJECT_LABEL, type ModuleResult, type ModuleView, type SupportStatus } from '../shared/support.ts';
 import type { Child } from '../shared/types.ts';
@@ -26,16 +27,35 @@ export interface TrainRun {
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
-/** Statut du soutien d'un élève, chargé une fois puis relu à la demande. */
+/** Un statut vieux de plus de cinq minutes, ou d'un autre jour, est relu (l'ancien reste affiché en attendant). */
+const STALE = 5 * 60000;
+const isStale = (time: number | undefined): boolean =>
+  Date.now() - (time ?? 0) > STALE || parisDate(new Date(time ?? 0)) !== parisDate(new Date());
+
+/** À appeler quand les données de l'application sont rechargées : les statuts seront relus au prochain affichage. */
+export function markSupportStale(): void {
+  for (const entry of state.support.values()) {
+    entry.time = 0;
+    entry.error = null;
+  }
+}
+
+/** Statut du soutien d'un élève, chargé une fois puis relu quand il vieillit ou après un rechargement. */
 function statusOf(child: Child, actions: Actions): SupportStatus | null {
   const entry = state.support.get(child.id) ?? { value: null, loading: false, error: null };
   state.support.set(child.id, entry);
-  if (!entry.value && !entry.loading && !entry.error) {
+  if (!entry.loading && !entry.error && (!entry.value || isStale(entry.time))) {
     entry.loading = true;
     api.support
       .status(child.id)
-      .then((value) => (entry.value = value))
-      .catch((e) => (entry.error = message(e, 'Soutien indisponible.')))
+      .then((value) => {
+        entry.value = value;
+        entry.time = Date.now();
+      })
+      .catch((e) => {
+        entry.error = message(e, 'Soutien indisponible.');
+        entry.time = Date.now();
+      })
       .finally(() => {
         entry.loading = false;
         actions.rerender();
@@ -45,7 +65,7 @@ function statusOf(child: Child, actions: Actions): SupportStatus | null {
 }
 
 function reloadStatus(childId: string, status?: SupportStatus): void {
-  state.support.set(childId, { value: status ?? null, loading: false, error: null });
+  state.support.set(childId, { value: status ?? null, loading: false, error: null, time: Date.now() });
 }
 
 const percent = (value: number | null) => (value === null ? '' : ` · ${Math.round(value * 100)} % de réussite`);

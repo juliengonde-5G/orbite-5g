@@ -416,3 +416,42 @@ test('service : un module de Claude invalide est refusé proprement', async () =
     (e: unknown) => e instanceof SupportError && e.code === 503 && /indisponibles/.test(e.message),
   );
 });
+
+test('service : un module ouvert plus tôt ne dépasse pas le budget du jour à la correction', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'o5g-support-'));
+  const support = new Support(new Vault(dir), { available: true, write: async () => valid5() }, () => NOW);
+  const child = {
+    className: '6E2',
+    notes: [
+      note('MATHS', '2026-11-01', 8, [
+        skill('Fractions', 1, 'C1'),
+        skill('Équations', 2, 'C2'),
+        skill('Géométrie', 2, 'C3'),
+      ]),
+      note('ANGLAIS', '2026-11-02', 12, [skill('Lire', 3, 'E1')]),
+      note('FRANCAIS', '2026-11-03', 12, [skill('Accorder', 3, 'F1')]),
+    ],
+  };
+  support.setEnabled('1:11', true);
+  const first = support.status('1:11', child).plan.map((p) => p.key);
+  assert.equal(first.length, 3);
+  const views = [];
+  for (const key of first) views.push(await support.start('1:11', child, key));
+  support.answer('1:11', child, views[0]!.id, [0, 0, 0, 0, 0], 60);
+
+  // Le plan a changé : un module qui n'était pas offert au départ apparaît.
+  const later = support.status('1:11', child).plan.map((p) => p.key);
+  const added = later.find((key) => !first.includes(key));
+  assert.ok(added, 'un nouveau module est proposé après le premier');
+  const extra = await support.start('1:11', child, added);
+
+  support.answer('1:11', child, views[1]!.id, [0, 0, 0, 0, 0], 60);
+  support.answer('1:11', child, views[2]!.id, [0, 0, 0, 0, 0], 60);
+  assert.equal(support.status('1:11', child).doneToday, 3);
+  assert.throws(
+    () => support.answer('1:11', child, extra.id, [0, 0, 0, 0, 0], 60),
+    (e: unknown) => e instanceof SupportError && e.code === 409,
+    'le quatrième module du jour est refusé',
+  );
+  assert.equal(support.status('1:11', child).doneToday, 3);
+});

@@ -330,6 +330,12 @@ export class Support {
     if (!session) throw new SupportError('Ce module a déjà été corrigé ou a expiré.', 404);
     if (!Array.isArray(answers) || answers.length !== session.exercises.length)
       throw new SupportError('Réponses incomplètes.', 400);
+    // Le plan change quand un module est terminé : des modules ouverts plus tôt (autre onglet,
+    // autre appareil) ne doivent pas dépasser le budget du jour au moment de la correction.
+    const state = this.child(childId);
+    const today = this.today();
+    if (state.history.filter((m) => m.date === today).length >= MAX_MODULES_PER_DAY)
+      throw new SupportError(`Les ${MAX_MODULES_PER_DAY} modules du jour sont déjà faits. À demain !`, 409);
     const given = answers.map((a) => (Number.isInteger(a) ? (a as number) : -1));
     const items = session.exercises.map((x, i) => ({
       correct: given[i] === x.answer,
@@ -338,9 +344,7 @@ export class Support {
     }));
     const right = items.filter((x) => x.correct).length;
     const total = items.length;
-    const state = this.child(childId);
     const now = this.now();
-    const today = this.today();
     state.focuses[session.focus.key] = settle(state.focuses[session.focus.key], session.focus, right, total, today);
     const elapsed = typeof seconds === 'number' && seconds >= 0 && seconds < 7200 ? Math.round(seconds) : null;
     state.history = [
