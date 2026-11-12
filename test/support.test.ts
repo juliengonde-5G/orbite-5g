@@ -126,9 +126,24 @@ test('plan du jour : trois modules au plus, fragiles d’abord, matières varié
   assert.equal(plan[2]?.difficulty, 2);
 
   // Déjà fait aujourd'hui : le budget de 3 modules est partagé.
-  assert.equal(planDay(focuses, { focuses: {} }, TODAY, [{ key: 'a' }, { key: 'c' }]).length, 1);
-  assert.equal(planDay(focuses, { focuses: {} }, TODAY, [{ key: 'a' }, { key: 'c' }, { key: 'd' }]).length, 0);
-  assert.ok(!planDay(focuses, { focuses: {} }, TODAY, [{ key: 'a' }]).some((p) => p.focus.key === 'a'));
+  assert.equal(
+    planDay(focuses, { focuses: {} }, TODAY, [
+      { key: 'a', subject: 'maths' },
+      { key: 'c', subject: 'francais' },
+    ]).length,
+    1,
+  );
+  assert.equal(
+    planDay(focuses, { focuses: {} }, TODAY, [
+      { key: 'a', subject: 'maths' },
+      { key: 'c', subject: 'francais' },
+      { key: 'd', subject: 'anglais' },
+    ]).length,
+    0,
+  );
+  assert.ok(
+    !planDay(focuses, { focuses: {} }, TODAY, [{ key: 'a', subject: 'maths' }]).some((p) => p.focus.key === 'a'),
+  );
 });
 
 test('révision espacée : un point reste en attente jusqu’à son échéance', () => {
@@ -417,43 +432,42 @@ test('service : un module de Claude invalide est refusé proprement', async () =
   );
 });
 
-test('service : un module ouvert plus tôt ne dépasse pas le budget du jour à la correction', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'o5g-support-'));
-  const support = new Support(new Vault(dir), { available: true, write: async () => valid5() }, () => NOW);
-  const child = {
-    className: '6E2',
-    notes: [
-      note('MATHS', '2026-11-01', 8, [
-        skill('Fractions', 1, 'C1'),
-        skill('Équations', 2, 'C2'),
-        skill('Géométrie', 2, 'C3'),
-      ]),
-      note('ANGLAIS', '2026-11-02', 12, [skill('Lire', 3, 'E1')]),
-      note('FRANCAIS', '2026-11-03', 12, [skill('Accorder', 3, 'F1')]),
-    ],
-  };
-  support.setEnabled('1:11', true);
-  const first = support.status('1:11', child).plan.map((p) => p.key);
-  assert.equal(first.length, 3);
-  const views = [];
-  for (const key of first) views.push(await support.start('1:11', child, key));
-  support.answer('1:11', child, views[0]!.id, [0, 0, 0, 0, 0], 60);
-
-  // Le plan a changé : un module qui n'était pas offert au départ apparaît.
-  const later = support.status('1:11', child).plan.map((p) => p.key);
-  const added = later.find((key) => !first.includes(key));
-  assert.ok(added, 'un nouveau module est proposé après le premier');
-  const extra = await support.start('1:11', child, added);
-
-  support.answer('1:11', child, views[1]!.id, [0, 0, 0, 0, 0], 60);
-  support.answer('1:11', child, views[2]!.id, [0, 0, 0, 0, 0], 60);
-  assert.equal(support.status('1:11', child).doneToday, 3);
-  assert.throws(
-    () => support.answer('1:11', child, extra.id, [0, 0, 0, 0, 0], 60),
-    (e: unknown) => e instanceof SupportError && e.code === 409,
-    'le quatrième module du jour est refusé',
+test('plan : une matière déjà travaillée aujourd’hui compte pour la variété du reste de la journée', () => {
+  const focuses = [
+    focus('m1', 'maths', 0),
+    focus('m2', 'maths', 0.33),
+    focus('m3', 'maths', 0.33),
+    focus('fr', 'francais', 0.67),
+    focus('en', 'anglais', 0.67),
+  ];
+  const first = planDay(focuses, { focuses: {} }, TODAY);
+  assert.deepEqual(new Set(first.map((p) => p.focus.subject)), new Set(['maths', 'francais', 'anglais']));
+  const rest = planDay(focuses, { focuses: {} }, TODAY, [{ key: 'm1', subject: 'maths' }]);
+  assert.deepEqual(
+    rest.map((p) => p.focus.subject).sort(),
+    ['anglais', 'francais'],
+    'après un module de maths, les deux autres matières passent avant un deuxième module de maths',
   );
-  assert.equal(support.status('1:11', child).doneToday, 3);
+});
+
+test('service : le budget du jour est revérifié à la correction (autre onglet ou appareil)', async () => {
+  const { support, child, vault } = setup();
+  support.setEnabled('1:11', true);
+  const open = await support.start('1:11', child, support.status('1:11', child).plan[0]!.key);
+
+  // Entre-temps, d'autres modules ont été terminés ailleurs : le budget des trois modules est atteint.
+  const doc = vault.load<any>('support', null);
+  doc.children['1:11'].history.push(
+    ...['x', 'y', 'z'].map((key) => ({ date: TODAY, key, subject: 'maths', right: 5, total: 5, seconds: 60, hour: 8 })),
+  );
+  vault.save('support', doc);
+  const other = new Support(vault, { available: true, write: async () => valid5() }, () => NOW);
+  assert.throws(
+    () => other.answer('1:11', child, open.id, [1, 1, 1, 1, 1], 60),
+    (e: unknown) => e instanceof SupportError && e.code === 409,
+    'un quatrième module du jour est refusé',
+  );
+  assert.equal(other.status('1:11', child).doneToday, 3);
 });
 
 test('service : un module régénéré après expiration reçoit un autre identifiant', async () => {

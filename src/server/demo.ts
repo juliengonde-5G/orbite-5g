@@ -537,7 +537,7 @@ export const demoExerciseWriter = {
         ['« Yesterday I ___ to school. »', ['go', 'went', 'goes'], 1, '« Went » est le prétérit de « go ».'],
         ['What is the opposite of « big »?', ['small', 'tall', 'long'], 0, '« Small » est le contraire de « big ».'],
         ['« There ___ two cats. »', ['is', 'are', 'am'], 1, 'Deux chats : pluriel, donc « are ».'],
-        ['« I am ___ English. »', ['a', 'an', 'the'], 1, '« An » devant une voyelle.'],
+        ['« She is ___ English teacher. »', ['a', 'an', 'the'], 1, '« An » devant une voyelle : an English teacher.'],
       ],
     } as const;
     return banks[request.subject].map(([q, choices, answer, explain]) => ({

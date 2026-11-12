@@ -181,11 +181,13 @@ export function planDay(
   focuses: readonly Focus[],
   support: Pick<SupportChild, 'focuses'>,
   today: string,
-  doneToday: readonly Pick<ModuleRecord, 'key'>[] = [],
+  doneToday: readonly Pick<ModuleRecord, 'key' | 'subject'>[] = [],
 ): PlanItem[] {
   const room = MAX_MODULES_PER_DAY - doneToday.length;
   if (room <= 0) return [];
   const done = new Set(doneToday.map((m) => m.key));
+  // La variété vaut pour toute la journée : une matière déjà travaillée compte comme déjà au programme.
+  const doneSubjects = doneToday.map((m) => m.subject);
   const candidates: { item: PlanItem; score: number }[] = [];
   for (const focus of focuses) {
     if (done.has(focus.key)) continue;
@@ -200,7 +202,7 @@ export function planDay(
   }
   const picked: PlanItem[] = [];
   while (picked.length < room && candidates.length) {
-    const used = new Set(picked.map((p) => p.focus.subject));
+    const used = new Set([...doneSubjects, ...picked.map((p) => p.focus.subject)]);
     const adjusted = (c: { item: PlanItem; score: number }) => c.score - (used.has(c.item.focus.subject) ? VARIETY : 0);
     candidates.sort((a, b) => adjusted(b) - adjusted(a) || a.item.focus.key.localeCompare(b.item.focus.key));
     picked.push(candidates.shift()!.item);
