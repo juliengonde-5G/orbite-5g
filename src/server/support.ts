@@ -21,7 +21,7 @@
  * Points d'attention : la maîtrise « école » ne change jamais ici. Elle ne vient que
  * d'ÉcoleDirecte ; les réponses ne servent qu'à ajuster le rythme et la difficulté.
  */
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   focusesOf,
   ITEMS_PER_MODULE,
@@ -163,7 +163,10 @@ export class ClaudeExerciseWriter implements ExerciseWriter {
 }
 
 interface Session {
+  /** Identifiant de soumission, unique à chaque génération : une réponse ne vise jamais d'autres questions. */
   id: string;
+  /** Clé de réutilisation (élève, jour, point, difficulté) : rouvrir un module ne rappelle pas Claude. */
+  key: string;
   childId: string;
   date: string;
   focus: Focus;
@@ -282,7 +285,7 @@ export class Support {
     const id = `${childId}:${today}:${item.focus.key}:${item.difficulty}`;
     const cutoff = this.now().getTime() - SESSION_TTL;
     this.doc.sessions = this.doc.sessions.filter((s) => s.createdAt > cutoff);
-    const existing = this.doc.sessions.find((s) => s.id === id);
+    const existing = this.doc.sessions.find((s) => s.key === id);
     if (existing) return Promise.resolve(existing);
     const pending = this.building.get(id);
     if (pending !== undefined) return pending;
@@ -295,7 +298,8 @@ export class Support {
       })
       .then((exercises) => {
         const session: Session = {
-          id,
+          id: randomUUID(),
+          key: id,
           childId,
           date: today,
           focus: item.focus,
@@ -327,7 +331,8 @@ export class Support {
     seconds: unknown,
   ): ModuleResult {
     const session = this.doc.sessions.find((s) => s.id === sessionId && s.childId === childId);
-    if (!session) throw new SupportError('Ce module a déjà été corrigé ou a expiré.', 404);
+    if (!session || session.createdAt <= this.now().getTime() - SESSION_TTL)
+      throw new SupportError('Ce module a déjà été corrigé ou a expiré.', 404);
     if (!Array.isArray(answers) || answers.length !== session.exercises.length)
       throw new SupportError('Réponses incomplètes.', 400);
     // Le plan change quand un module est terminé : des modules ouverts plus tôt (autre onglet,

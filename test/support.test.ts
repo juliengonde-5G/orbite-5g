@@ -455,3 +455,22 @@ test('service : un module ouvert plus tôt ne dépasse pas le budget du jour à 
   );
   assert.equal(support.status('1:11', child).doneToday, 3);
 });
+
+test('service : un module régénéré après expiration reçoit un autre identifiant', async () => {
+  const { support, child, clock } = setup();
+  support.setEnabled('1:11', true);
+  const key = support.status('1:11', child).plan[0]!.key;
+  const old = await support.start('1:11', child, key);
+
+  // Plus de douze heures plus tard le même jour : l'ancien module expire, un autre est généré.
+  clock.value = new Date('2026-11-12T22:00:00+01:00');
+  const fresh = await support.start('1:11', child, key);
+  assert.notEqual(fresh.id, old.id);
+  assert.throws(
+    () => support.answer('1:11', child, old.id, [1, 1, 1, 1, 1], 60),
+    (e: unknown) => e instanceof SupportError && e.code === 404,
+    'l’ancien écran n’est pas corrigé contre les nouvelles questions',
+  );
+  const done = support.answer('1:11', child, fresh.id, [1, 1, 1, 1, 1], 60);
+  assert.equal(done.right, 5);
+});
