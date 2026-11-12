@@ -474,3 +474,31 @@ test('service : un module régénéré après expiration reçoit un autre identi
   const done = support.answer('1:11', child, fresh.id, [1, 1, 1, 1, 1], 60);
   assert.equal(done.right, 5);
 });
+
+test('matière : seules les notes des quatre derniers mois comptent', () => {
+  const old = focusesOf({ notes: [note('MATHS', '2026-01-10', 4), note('MATHS', '2026-01-20', 5)] }, NOW);
+  assert.ok(!old.some((f) => f.key === 's:maths'), 'deux vieilles notes ne font pas une matière à réviser');
+  const mixed = focusesOf(
+    { notes: [note('MATHS', '2026-01-10', 2), note('MATHS', '2026-10-20', 18), note('MATHS', '2026-11-05', 16)] },
+    NOW,
+  );
+  assert.equal(mixed.find((f) => f.key === 's:maths')?.mastery, 17 / 20, 'la vieille note n’entre pas dans la moyenne');
+});
+
+test('service : un même point n’est pas compté deux fois dans la journée (module resté ouvert après minuit)', async () => {
+  const { support, child, clock } = setup();
+  support.setEnabled('1:11', true);
+  clock.value = new Date('2026-11-11T23:30:00+01:00');
+  const key = support.status('1:11', child).plan[0]!.key;
+  const evening = await support.start('1:11', child, key);
+
+  clock.value = new Date('2026-11-12T00:30:00+01:00');
+  const night = await support.start('1:11', child, key);
+  assert.notEqual(night.id, evening.id);
+  support.answer('1:11', child, night.id, [1, 1, 1, 1, 1], 60);
+  assert.throws(
+    () => support.answer('1:11', child, evening.id, [1, 1, 1, 1, 1], 60),
+    (e: unknown) => e instanceof SupportError && e.code === 409,
+  );
+  assert.equal(support.status('1:11', child).doneToday, 1);
+});

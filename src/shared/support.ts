@@ -21,7 +21,7 @@
  * Points d'attention : les dates sont des jours civils à Paris (`YYYY-MM-DD`) ;
  * ce fichier ne dépend ni de Node ni du DOM.
  */
-import { metrics } from './metrics.ts';
+import { metrics, parisDate } from './metrics.ts';
 import type { Child } from './types.ts';
 
 export type SupportSubject = 'maths' | 'francais' | 'anglais';
@@ -138,8 +138,12 @@ export function focusesOf(child: Pick<Child, 'notes'>, now = new Date()): Focus[
     }
   }
   const focuses: Focus[] = [...out.values()].map(({ when: _when, ...focus }) => focus);
+  // `metrics()` n'utilise la durée que pour la tendance : la fenêtre de quatre mois se filtre ici.
+  const since = shiftDay(parisDate(now), -120);
   for (const subject of SUPPORT_SUBJECTS) {
-    const notes = child.notes.filter((n) => (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === subject);
+    const notes = child.notes.filter(
+      (n) => (n.date ?? '') >= since && (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === subject,
+    );
     const m = metrics(notes, now, 120);
     if (m.average === null || m.count < 2) continue;
     focuses.push({

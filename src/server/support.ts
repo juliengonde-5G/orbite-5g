@@ -341,6 +341,9 @@ export class Support {
     const today = this.today();
     if (state.history.filter((m) => m.date === today).length >= MAX_MODULES_PER_DAY)
       throw new SupportError(`Les ${MAX_MODULES_PER_DAY} modules du jour sont déjà faits. À demain !`, 409);
+    // Un module resté ouvert au-delà de minuit peut avoir été refait aujourd'hui sous une autre clé.
+    if (state.history.some((m) => m.date === today && m.key === session.focus.key))
+      throw new SupportError('Tu as déjà fait ce module aujourd’hui.', 409);
     const given = answers.map((a) => (Number.isInteger(a) ? (a as number) : -1));
     const items = session.exercises.map((x, i) => ({
       correct: given[i] === x.answer,
