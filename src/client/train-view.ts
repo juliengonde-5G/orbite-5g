@@ -19,6 +19,8 @@ export interface TrainRun {
   module: ModuleView | null;
   index: number;
   answers: (number | null)[];
+  /** Réponses telles qu'envoyées : la correction affiche celles-là, même si l'écran a bougé depuis. */
+  submitted: (number | null)[] | null;
   startedAt: number;
   result: ModuleResult | null;
   loading: boolean;
@@ -153,6 +155,7 @@ function begin(child: Child, key: string, actions: Actions): void {
     module: null,
     index: 0,
     answers: [],
+    submitted: null,
     startedAt: Date.now(),
     result: null,
     loading: true,
@@ -178,9 +181,11 @@ function finish(run: TrainRun, actions: Actions): void {
   if (!run.module || run.loading) return;
   run.loading = true;
   run.error = null;
+  const sent = [...run.answers];
+  run.submitted = sent;
   actions.rerender();
   api.support
-    .answer(run.childId, run.module.id, run.answers, (Date.now() - run.startedAt) / 1000)
+    .answer(run.childId, run.module.id, sent, (Date.now() - run.startedAt) / 1000)
     .then((result) => {
       run.result = result;
       reloadStatus(run.childId, result.status);
@@ -211,7 +216,7 @@ function resultBody(run: TrainRun, module: ModuleView, result: ModuleResult, act
       'ol.train-review',
       module.items.map((item, i) => {
         const r = result.items[i]!;
-        const given = run.answers[i];
+        const given = (run.submitted ?? run.answers)[i];
         return h(
           `li.${r.correct ? 'is-right' : 'is-wrong'}`,
           h('p.train-q', item.q),
@@ -258,6 +263,7 @@ function questionBody(run: TrainRun, module: ModuleView, actions: Actions): HTML
           {
             type: 'button',
             role: 'radio',
+            disabled: run.loading,
             'aria-checked': String(chosen === i),
             onclick: () => {
               run.answers[run.index] = i;
