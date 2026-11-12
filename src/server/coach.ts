@@ -59,6 +59,8 @@ export interface Coach {
   setKey(key: string | null): void;
   /** Vérifie une clé auprès d'Anthropic, sans générer de texte (aucun jeton consommé). */
   check(key: string): Promise<KeyCheck>;
+  /** Texte libre pour le soutien scolaire : consigne, données, longueur maximale. */
+  complete(system: string, user: string, maxTokens: number): Promise<string>;
 }
 
 export class ClaudeCoach implements Coach {
@@ -118,7 +120,17 @@ export class ClaudeCoach implements Coach {
     return task;
   }
 
-  private async request(context: CoachingContext): Promise<string> {
+  private request(context: CoachingContext): Promise<string> {
+    return this.complete(SYSTEM, 'Données : ' + JSON.stringify(context), 200).then((text) => {
+      const line = text.replace(/\s+/g, ' ').trim();
+      if (!line || line.length > 320) throw new Error('Conseil indisponible.');
+      return line;
+    });
+  }
+
+  async complete(system: string, user: string, maxTokens: number): Promise<string> {
+    if (!this.configured) throw new Error('Clé Claude absente.');
+    if (this.active >= 3) throw new Error('Génération en cours, réessaie dans un instant.');
     this.active++;
     try {
       const res = await this.fetch('https://api.anthropic.com/v1/messages', {
@@ -130,22 +142,20 @@ export class ClaudeCoach implements Coach {
         },
         body: JSON.stringify({
           model: this.model,
-          max_tokens: 200,
-          system: SYSTEM,
-          messages: [{ role: 'user', content: 'Données : ' + JSON.stringify(context) }],
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: 'user', content: user }],
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(45000),
       });
-      if (!res.ok) throw new Error('Conseil indisponible.');
+      if (!res.ok) throw new Error('Génération indisponible.');
       const body = (await res.json()) as { content?: { type?: string; text?: string }[]; stop_reason?: string };
-      const text = (body.content ?? [])
+      if (body.stop_reason === 'max_tokens') throw new Error('Génération incomplète.');
+      return (body.content ?? [])
         .filter((b) => b.type === 'text' && typeof b.text === 'string')
         .map((b) => b.text)
-        .join(' ')
-        .replace(/\s+/g, ' ')
+        .join('\n')
         .trim();
-      if (!text || text.length > 320) throw new Error('Conseil indisponible.');
-      return text;
     } finally {
       this.active--;
     }

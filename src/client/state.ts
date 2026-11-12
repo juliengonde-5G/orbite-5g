@@ -2,6 +2,8 @@
  * État partagé de l'interface. Les vues lisent cet objet ; `app.ts` le modifie
  * puis demande un nouveau rendu (`render`).
  */
+import type { SupportStatus } from '../shared/support.ts';
+import type { TrainRun } from './train-view.ts';
 import type {
   BagDay,
   DocKind,
@@ -29,6 +31,7 @@ export type Route =
   | 'life'
   | 'recap'
   | 'docs'
+  | 'train'
   | 'me';
 
 export interface HomeworkState {
@@ -91,6 +94,9 @@ export const state = {
   /** Documents de l'établissement (parents). */
   docs: { value: null, loading: false, error: null } as Loadable<DocumentList>,
   docsKind: 'all' as 'all' | DocKind,
+  /** Soutien scolaire : statut par élève, et module en cours. */
+  support: new Map<string, Loadable<SupportStatus>>(),
+  train: null as TrainRun | null,
   /** Contenu des séances, par `élève|date`. */
   lessons: new Map<string, Loadable<Lesson[]>>(),
   /** Onglet Devoirs : à faire ou « en classe ». */
@@ -123,6 +129,8 @@ export function resetData(): void {
   state.lessons.clear();
   state.docs = { value: null, loading: false, error: null };
   state.docsKind = 'all';
+  state.support.clear();
+  state.train = null;
   state.tasksMode = 'todo';
   state.taskDay = null;
   state.lessonDay = null;

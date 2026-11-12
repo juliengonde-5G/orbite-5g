@@ -19,6 +19,7 @@ import { lifeView } from './life-view.ts';
 import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
 import { docsView } from './docs-view.ts';
+import { markSupportStale, trainView } from './train-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -35,6 +36,7 @@ const HASH: Record<Route, string> = {
   life: 'vie-scolaire',
   recap: 'recap',
   docs: 'documents',
+  train: 'entrainement',
   me: 'moi',
 };
 
@@ -112,6 +114,7 @@ async function loadData(refresh = false): Promise<void> {
     state.data = data;
     state.dataTime = Date.now();
     state.dataError = null;
+    markSupportStale();
     // Les repères « nouveau » restent visibles pendant toute la visite.
     for (const k of data.fresh) state.fresh.add(k);
     const ids = data.children.map((c) => c.id);
@@ -440,7 +443,7 @@ function tabs(): [Route, string, string][] {
 
 function currentTab(): Route {
   const r = state.route;
-  if (r === 'child') return 'home';
+  if (r === 'child' || r === 'train') return 'home';
   if (r === 'message') return 'messages';
   if (r === 'progress') return 'grades';
   if (r === 'life' && state.session?.me?.role !== 'parent') return 'home';
@@ -553,6 +556,8 @@ function currentView(): HTMLElement {
       return gradesView(child, actions);
     case 'life':
       return lifeView(child, actions);
+    case 'train':
+      return me.role === 'child' ? trainView(child, actions) : studentHome(child, actions, true);
     default:
       return studentHome(child, actions, me.role === 'parent');
   }

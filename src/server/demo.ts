@@ -472,3 +472,79 @@ export class DemoEd implements EdClient {
     this.state = 'authenticated';
   }
 }
+
+/** Rédacteur d'exercices de démonstration : quelques questions fixes, aucun appel réseau. */
+export const demoExerciseWriter = {
+  available: true,
+  async write(request: { subject: 'maths' | 'francais' | 'anglais' }) {
+    const banks = {
+      maths: [
+        [
+          'Combien font 3/4 + 1/4 ?',
+          ['1', '4/8', '3/16'],
+          0,
+          'Les dénominateurs sont identiques : 3 + 1 = 4 quarts, soit 1.',
+        ],
+        ['Quelle fraction est égale à 1/2 ?', ['2/6', '3/6', '3/5'], 1, '3/6 se simplifie en 1/2.'],
+        ['Combien font 2/3 de 12 ?', ['6', '8', '9'], 1, '12 ÷ 3 = 4, puis 4 × 2 = 8.'],
+        [
+          'Quelle fraction est la plus grande ?',
+          ['1/3', '1/2', '1/5'],
+          1,
+          'Plus le dénominateur est petit, plus la part est grande.',
+        ],
+        ['3/5 + 1/5 = ?', ['4/10', '4/5', '3/25'], 1, 'On additionne les numérateurs : 4/5.'],
+      ],
+      francais: [
+        [
+          'Choisis la bonne forme : « Les fleurs que j’ai ___ ».',
+          ['cueilli', 'cueillies', 'cueillis'],
+          1,
+          'Le participe s’accorde avec « fleurs » placé avant le verbe.',
+        ],
+        [
+          'Quel mot est un verbe ?',
+          ['rapidement', 'courir', 'lumineux'],
+          1,
+          'On peut dire « il court » : c’est un verbe.',
+        ],
+        [
+          '« Ils ___ partis tôt. » Quelle forme ?',
+          ['est', 'sont', 'ont'],
+          1,
+          'Avec « ils », le verbe être se conjugue « sont ».',
+        ],
+        [
+          'Quel est le pluriel de « un cheval » ?',
+          ['des chevals', 'des chevaux', 'des chevaus'],
+          1,
+          'Les noms en -al font souvent -aux.',
+        ],
+        [
+          'Quelle phrase est correcte ?',
+          ['Elle a mangée.', 'Elle a mangé.', 'Elle à mangé.'],
+          1,
+          'Avec avoir, le participe ne s’accorde pas ici.',
+        ],
+      ],
+      anglais: [
+        [
+          'Choose the right word: « She ___ a book. »',
+          ['read', 'reads', 'reading'],
+          1,
+          'With « she », we add -s to the verb.',
+        ],
+        ['« Yesterday I ___ to school. »', ['go', 'went', 'goes'], 1, '« Went » est le prétérit de « go ».'],
+        ['What is the opposite of « big »?', ['small', 'tall', 'long'], 0, '« Small » est le contraire de « big ».'],
+        ['« There ___ two cats. »', ['is', 'are', 'am'], 1, 'Deux chats : pluriel, donc « are ».'],
+        ['« She is ___ English teacher. »', ['a', 'an', 'the'], 1, '« An » devant une voyelle : an English teacher.'],
+      ],
+    } as const;
+    return banks[request.subject].map(([q, choices, answer, explain]) => ({
+      q,
+      choices: [...choices],
+      answer,
+      explain,
+    }));
+  },
+};
