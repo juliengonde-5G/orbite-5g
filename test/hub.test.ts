@@ -204,6 +204,27 @@ test(
   }),
 );
 
+test(
+  'suppression : réservée aux familles suspendues, efface fiche, dossier et invitation',
+  withDir(async (dir) => {
+    const clock = { now: new Date('2026-11-15T10:00:00Z') };
+    const hub = newHub(dir, clock);
+    const { family } = hub.create(hub.invite('Martin'), { familyName: 'Famille Martin', adminName: 'Claire' });
+    assert.ok(existsSync(hub.familyDir(family.slug)));
+    assert.throws(() => hub.remove(family.slug), HubError, 'pas sans suspension');
+    hub.update(family.slug, { disabled: true });
+    let closed = '';
+    hub.onRemoved = (slug) => (closed = slug);
+    hub.remove(family.slug);
+    assert.equal(closed, family.slug);
+    assert.ok(!existsSync(hub.familyDir(family.slug)));
+    assert.equal(hub.invites().length, 0);
+    const again = newHub(dir, clock);
+    assert.equal(again.get(family.slug), undefined, 'rien ne la recrée au redémarrage');
+    assert.throws(() => again.remove(family.slug), HubError);
+  }),
+);
+
 test('MeteredCoach : un conseil servi par le cache ne consomme pas le plafond', async () => {
   let upstream = 0;
   const transport = (async () => {

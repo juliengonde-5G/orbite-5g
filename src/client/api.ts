@@ -72,6 +72,7 @@ export const hubApi = {
     callAt<SessionInfo>(url.replace(/\/$/, ''), 'POST', '/api/setup', { name, pin, code }),
   families: () => callAt<HubOverview>('', 'GET', '/api/hub/families'),
   invite: (label: string) => callAt<{ path: string } & HubOverview>('', 'POST', '/api/hub/invite', { label }),
+  remove: (slug: string) => callAt<HubOverview>('', 'POST', '/api/hub/family/delete', { slug }),
   update: (slug: string, changes: { disabled?: boolean; dailyLimit?: number }) =>
     callAt<HubOverview>('', 'POST', '/api/hub/family/update', { slug, ...changes }),
 };

@@ -19,6 +19,7 @@
  * - une famille suspendue garde ses données ; rien n'est jamais supprimé ici.
  */
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { parisDate } from '../shared/metrics.ts';
 import { ClaudeCoach, type Coach } from './coach.ts';
@@ -117,6 +118,8 @@ export class Hub {
   private readonly coaches = new Map<string, Coach>();
   private master: string | null = null;
   private failures: number[] = [];
+  /** Appelé après une suppression, pour arrêter l'application de la famille. */
+  onRemoved: ((slug: string) => void) | null = null;
 
   constructor(vault: Vault, options: HubOptions) {
     this.vault = vault;
@@ -249,6 +252,20 @@ export class Hub {
       dailyLimit: f.dailyLimit,
       usedToday: this.used(f.slug),
     }));
+  }
+
+  /** Efface définitivement une famille suspendue : fiche, invitation liée, consommation et dossier de données. */
+  remove(slug: unknown): void {
+    const family = typeof slug === 'string' ? this.get(slug) : undefined;
+    if (!family) throw new HubError('Famille introuvable.', 404);
+    if (!family.disabled) throw new HubError('Suspends d’abord la famille avant de la supprimer.');
+    this.onRemoved?.(family.slug);
+    rmSync(this.familyDir(family.slug), { recursive: true, force: true });
+    this.doc.families = this.doc.families.filter((f) => f.slug !== family.slug);
+    this.doc.invites = this.doc.invites.filter((i) => i.slug !== family.slug);
+    delete this.doc.usage[family.slug];
+    this.coaches.delete(family.slug);
+    this.save();
   }
 
   update(slug: unknown, changes: { disabled?: unknown; dailyLimit?: unknown }): void {

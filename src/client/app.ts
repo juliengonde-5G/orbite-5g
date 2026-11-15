@@ -687,7 +687,10 @@ document.addEventListener('visibilitychange', () => {
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyPrefs);
 
-if ('serviceWorker' in navigator && location.protocol === 'https:')
-  void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  // Un service worker par famille : chacune a ainsi son propre abonnement aux notifications.
+  const base = document.querySelector('meta[name="orbite-base"]')?.getAttribute('content') ?? '';
+  void navigator.serviceWorker.register(`${base}/sw.js`, { scope: `${base}/` }).catch(() => undefined);
+}
 
 void boot();

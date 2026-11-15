@@ -148,6 +148,27 @@ function familyRow(family: FamilyView, actions: SettingsActions): HTMLElement {
         },
         family.disabled ? 'Rétablir' : 'Suspendre',
       ),
+      family.disabled &&
+        h(
+          'button.link-button',
+          {
+            type: 'button',
+            onclick: () => {
+              if (
+                !confirm(
+                  `Supprimer définitivement « ${family.name} » et toutes ses données ? Cette action est irréversible.`,
+                )
+              )
+                return;
+              void hubApi
+                .remove(family.slug)
+                .then((next) => (overview = next))
+                .catch((e) => actions.toast(e instanceof ApiError ? e.message : 'Suppression impossible.'))
+                .finally(actions.rerender);
+            },
+          },
+          'Supprimer',
+        ),
     ),
   );
 }

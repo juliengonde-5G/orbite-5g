@@ -28,6 +28,10 @@ export function createHubServer(options: HubServerOptions): http.Server & { hub:
   const hub = new Hub(options.vault, { directory: options.vault.directory, ...hubOptions });
   const home = createApp({ ...appOptions, hub, onKey: (key) => hub.setMasterKey(key) });
   const apps = new Map<string, http.Server>();
+  hub.onRemoved = (slug) => {
+    apps.get(slug)?.close();
+    apps.delete(slug);
+  };
 
   const open = (record: FamilyRecord): http.Server => {
     let app = apps.get(record.slug);

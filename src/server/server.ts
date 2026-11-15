@@ -642,6 +642,14 @@ export function createApp(options: AppOptions): http.Server {
           },
         ],
         [
+          'POST /api/hub/family/delete',
+          async (ctx) => {
+            requireAdmin(ctx);
+            hubCall(() => hub.remove(ctx.data.slug));
+            return { families: hub.list(), invites: hub.invites() };
+          },
+        ],
+        [
           'POST /api/hub/family/update',
           async (ctx) => {
             requireAdmin(ctx);

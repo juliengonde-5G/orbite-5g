@@ -74,7 +74,7 @@ Une seule installation peut héberger d'autres familles. La famille « maison »
 
 Points d'attention :
 
-- Héberger les données scolaires d'autres familles engage la responsabilité de l'hébergeur (RGPD) : informer les familles de ce qui est conservé, de la durée, et de la façon de tout effacer. Pour effacer une famille, arrêter le conteneur et supprimer son dossier `families/<nom>-<suffixe>`.
+- Héberger les données scolaires d'autres familles engage la responsabilité de l'hébergeur (RGPD) : informer les familles de ce qui est conservé, de la durée, et de la façon de tout effacer. Pour effacer une famille : la suspendre, puis **Supprimer** dans Moi → Familles hébergées (fiche, dossier de données et consommation sont effacés ; les sauvegardes déjà faites ne le sont pas). Ne pas supprimer le dossier à la main : la fiche de la plateforme le recréerait.
 - Les identifiants ÉcoleDirecte de chaque famille sont chiffrés dans son propre coffre ; ils sont toutefois accessibles à quiconque administre le NAS, comme pour la famille « maison ».
 - Plusieurs familles interrogent ÉcoleDirecte depuis la même adresse : en cas de blocage côté ÉcoleDirecte, espacer les rafraîchissements.
 - Les sauvegardes du dossier de données couvrent toutes les familles ; garder avec chaque dossier son fichier `key`.
