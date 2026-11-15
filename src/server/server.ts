@@ -1149,6 +1149,17 @@ export function createApp(options: AppOptions): http.Server {
       },
     ],
     [
+      // Lecture et réglage de l'adaptation à la lecture (dyslexie) : réservés à un parent.
+      'POST /api/skills/adapt',
+      async (ctx) => {
+        requireParent(ctx);
+        const childId = await canSee(requireMember(ctx), ctx.data.childId);
+        if (ctx.data.dys === undefined) return { dys: support.dys(childId) };
+        if (typeof ctx.data.dys !== 'boolean') throw new HttpError('Réglage invalide.', 400);
+        return { dys: support.setDys(childId, ctx.data.dys) };
+      },
+    ],
+    [
       'POST /api/support/start',
       async (ctx) => {
         const childId = await supportPupil(ctx);
@@ -1294,8 +1305,10 @@ export function createApp(options: AppOptions): http.Server {
       async (ctx) => {
         requireAdmin(ctx);
         const students = ed.status().students.map((s) => s.id);
-        const { name, grade, color, studentId, admin } = ctx.data;
-        return family.view(family.update(ctx.data.memberId, { name, grade, color, studentId, admin }, students));
+        const { name, grade, color, studentId, admin, reading } = ctx.data;
+        const updated = family.update(ctx.data.memberId, { name, grade, color, studentId, admin }, students);
+        // L'affichage de lecture (police lisible) se règle aussi depuis la fiche de l'enfant.
+        return family.view(reading === undefined ? updated : family.setPrefs(updated.id, { reading }));
       },
     ],
     [

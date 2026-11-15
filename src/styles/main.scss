@@ -4160,3 +4160,40 @@ button {
     font-weight: 700;
   }
 }
+
+/* Fiche en lecture facilitée (dyslexie) : texte espacé, aligné à gauche, lignes courtes, étapes bien séparées. */
+.sheet-easy {
+  max-width: 62ch;
+  gap: 20px;
+  font-size: 1.06rem;
+  line-height: 1.85;
+  letter-spacing: 0.04em;
+  word-spacing: 0.14em;
+  text-align: left;
+  hyphens: none;
+  .sheet-part ul {
+    display: grid;
+    gap: 10px;
+    padding-left: 1.3rem;
+  }
+  .sheet-exercise {
+    gap: 12px;
+    padding: 16px;
+    details {
+      font-size: 1rem;
+    }
+  }
+  .sheet-cheer {
+    font-style: normal;
+  }
+}
+.sheet-easy-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.listen {
+  justify-self: start;
+  gap: 6px;
+}

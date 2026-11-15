@@ -303,6 +303,18 @@ export class Support {
     return known;
   }
 
+  /** Adaptation à la lecture réglée par un parent pour cet élève (lecture). */
+  dys(childId: string): boolean {
+    return this.child(childId).dys === true;
+  }
+
+  /** Active ou coupe l'adaptation à la lecture : les prochaines fiches sont écrites en phrases courtes. */
+  setDys(childId: string, on: boolean): boolean {
+    this.child(childId).dys = on;
+    this.save();
+    return on;
+  }
+
   /**
    * Les compétences du jour. Soutien activé : le plan fixé par l'audit ; sinon, ce que l'audit
    * choisirait aujourd'hui, sans rien fixer ni enregistrer.
