@@ -17,6 +17,16 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.6.0',
+    date: '2026-11-15',
+    title: 'Plusieurs familles',
+    notes: [
+      'Orbite peut héberger d’autres familles, chacune avec son lien, son espace chiffré et son propre compte ÉcoleDirecte.',
+      'Une famille se crée sur invitation, avec un lien à usage unique, et s’installe pas à pas grâce à un assistant.',
+      'La clé Claude reste unique ; chaque famille a un plafond quotidien que l’administrateur règle.',
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-11-15',
     title: 'Nouveautés et signalements',

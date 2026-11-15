@@ -4,6 +4,7 @@
  * dont le message est rédigé pour l'utilisateur.
  */
 import type { ReportKind, ReportView } from '../shared/releases.ts';
+import type { HubCreated, HubOverview } from '../shared/hub.ts';
 import type { ModuleResult, ModuleView, SupportStatus } from '../shared/support.ts';
 import type {
   AuthResult,
@@ -33,10 +34,13 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: 'GET' | 'POST', path: string, data?: unknown): Promise<T> {
+/** Préfixe de la famille (`/f/dupont-k7x2`), fourni par le serveur dans la page ; vide pour la famille « maison ». */
+export const BASE = document.querySelector('meta[name="orbite-base"]')?.getAttribute('content') ?? '';
+
+async function callAt<T>(base: string, method: 'GET' | 'POST', path: string, data?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetch(base + path, {
       method,
       credentials: 'same-origin',
       headers: method === 'POST' ? { 'Content-Type': 'application/json', 'X-Orbite-Client': '1' } : {},
@@ -55,6 +59,23 @@ async function call<T>(method: 'GET' | 'POST', path: string, data?: unknown): Pr
   }
   return body as T;
 }
+
+const call = <T>(method: 'GET' | 'POST', path: string, data?: unknown) => callAt<T>(BASE, method, path, data);
+
+/** Plateforme multi-familles : toujours la racine du serveur, jamais le préfixe d'une famille. */
+export const hubApi = {
+  check: (token: string) => callAt<{ label: string }>('', 'POST', '/api/hub/invite/check', { token }),
+  create: (token: string, familyName: string, adminName: string) =>
+    callAt<HubCreated>('', 'POST', '/api/hub/family/create', { token, familyName, adminName }),
+  /** Choisit le PIN du parent dans la famille tout juste créée (le code d'installation vient de `create`). */
+  setupParent: (url: string, name: string, pin: string, code: string) =>
+    callAt<SessionInfo>(url.replace(/\/$/, ''), 'POST', '/api/setup', { name, pin, code }),
+  families: () => callAt<HubOverview>('', 'GET', '/api/hub/families'),
+  invite: (label: string) => callAt<{ path: string } & HubOverview>('', 'POST', '/api/hub/invite', { label }),
+  remove: (slug: string) => callAt<HubOverview>('', 'POST', '/api/hub/family/delete', { slug }),
+  update: (slug: string, changes: { disabled?: boolean; dailyLimit?: number }) =>
+    callAt<HubOverview>('', 'POST', '/api/hub/family/update', { slug, ...changes }),
+};
 
 export const api = {
   session: () => call<SessionInfo>('GET', '/api/session'),

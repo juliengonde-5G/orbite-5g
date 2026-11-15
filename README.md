@@ -63,6 +63,22 @@ Chaque modification poussée sur `main` publie une nouvelle image `ghcr.io/julie
 | `ORBITE_DATA_DIR` | Dossier du coffre chiffré (`/data` dans l'image). |
 | `ED_API_VERSION` | Version d'API ÉcoleDirecte si le site en exige une autre. |
 
+## Plusieurs familles
+
+Une seule installation peut héberger d'autres familles. La famille « maison » (celle de l'administrateur de la plateforme) garde ses données à la racine du dossier de données ; chaque famille invitée vit dans `families/<nom>-<suffixe>/`, avec son propre coffre chiffré (sa propre clé `key`), ses profils, ses PIN et son compte ÉcoleDirecte. Aucune donnée n'est partagée entre familles.
+
+1. L'administrateur ouvre **Moi → Familles hébergées → Inviter** et envoie le lien reçu (usage unique, valable sept jours).
+2. La famille ouvre le lien, donne son nom et le prénom du parent administrateur, choisit un PIN et confirme qu'elle est responsable légale des enfants concernés. Son adresse est `https://<ton-domaine>/f/<nom>-<suffixe>/` ; le suffixe aléatoire la rend impossible à deviner.
+3. L'**assistant d'installation** (Moi, ou la carte d'accueil) la guide : connecter ÉcoleDirecte, ajouter les enfants, activer les profils sur les téléphones, puis notifications et soutien (facultatifs).
+4. La clé Anthropic est celle de l'administrateur de la plateforme. Chaque famille a un **plafond quotidien** d'appels à Claude (30 par défaut, réglable de 0 à 500) ; l'administrateur voit la consommation du jour et peut **suspendre** une famille (ses données sont conservées, son lien cesse de répondre).
+
+Points d'attention :
+
+- Héberger les données scolaires d'autres familles engage la responsabilité de l'hébergeur (RGPD) : informer les familles de ce qui est conservé, de la durée, et de la façon de tout effacer. Pour effacer une famille : la suspendre, puis **Supprimer** dans Moi → Familles hébergées (fiche, dossier de données et consommation sont effacés ; les sauvegardes déjà faites ne le sont pas). Ne pas supprimer le dossier à la main : la fiche de la plateforme le recréerait.
+- Les identifiants ÉcoleDirecte de chaque famille sont chiffrés dans son propre coffre ; ils sont toutefois accessibles à quiconque administre le NAS, comme pour la famille « maison ».
+- Plusieurs familles interrogent ÉcoleDirecte depuis la même adresse : en cas de blocage côté ÉcoleDirecte, espacer les rafraîchissements.
+- Les sauvegardes du dossier de données couvrent toutes les familles ; garder avec chaque dossier son fichier `key`.
+
 ## Sécurité
 
 - Coffre AES-256-GCM (`/data`) : profils, empreintes des PIN (scrypt), appareils connectés, identifiants ÉcoleDirecte, cache. La clé `key` est dans le même dossier : sauvegarder le dossier entier, et ne jamais le partager.

@@ -3,7 +3,7 @@
  * instantané et hors connexion. Les données (/api) ne sont jamais mises en
  * cache ici : elles restent sur le serveur, derrière le PIN.
  */
-const CACHE = 'orbite-shell-v5';
+const CACHE = 'orbite-shell-v7';
 const SHELL = ['/', '/style.css', '/client/app.js', '/favicon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -26,7 +26,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (
+    event.request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    /^(\/f\/[a-z0-9-]+)?\/api\//.test(url.pathname)
+  )
+    return;
   // Réseau d'abord (mises à jour immédiates), cache en secours hors connexion.
   event.respondWith(
     fetch(event.request)
@@ -37,7 +42,13 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request).then((hit) => hit || caches.match('/'))),
+      .catch(() =>
+        caches
+          .match(event.request)
+          // Hors connexion, le secours « accueil » n'est valable que pour la racine : une famille
+          // ne doit jamais retomber sur la page d'une autre.
+          .then((hit) => hit || (url.pathname === '/' ? caches.match('/') : Response.error())),
+      ),
   );
 });
 
@@ -66,7 +77,13 @@ self.addEventListener('notificationclick', (event) => {
   const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      const open = list.find((c) => new URL(c.url).origin === self.location.origin);
+      // La notification rouvre la fenêtre de sa propre famille (`/f/<nom>/`), jamais celle d'une autre.
+      const family = /^\/f\/[a-z0-9-]+\//.exec(new URL(url).pathname)?.[0] ?? null;
+      const open = list.find((c) => {
+        const target = new URL(c.url);
+        if (target.origin !== self.location.origin) return false;
+        return family ? target.pathname.startsWith(family) : !target.pathname.startsWith('/f/');
+      });
       if (open) return open.navigate(url).then((c) => (c || open).focus());
       return self.clients.openWindow(url);
     }),
