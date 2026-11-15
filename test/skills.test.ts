@@ -272,3 +272,12 @@ test('la formule du volume est juste pour chaque solide', () => {
   assert.match(tips, /pyramide et cône : un tiers/i);
   assert.doesNotMatch(tips, /^Volume = aire de la base × hauteur\.$/m);
 });
+
+test('la moyenne du profil ne compte que les 30 derniers jours', () => {
+  const mixed = {
+    className: '5E1',
+    notes: [note('MATHS', '2026-11-05', 18), note('MATHS', '2026-02-10', 2), note('MATHS', '2026-02-20', 2)],
+  };
+  const focus = focusesOf(mixed, NOW).find((f) => f.key === 's:maths')!;
+  assert.equal(profileOf(mixed, emptySupport(), focus, NOW).average, 18);
+});

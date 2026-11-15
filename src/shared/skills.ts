@@ -176,7 +176,13 @@ export function profileOf(
 ): LearnerProfile {
   const state = support.focuses[focus.key];
   const mine = child.notes.filter((n) => (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === focus.subject);
+  // `metrics()` ne filtre que la tendance : la moyenne se calcule sur les 30 derniers jours, comme dans la vue d'ensemble.
   const m = metrics(mine, now, 30);
+  const average = metrics(
+    mine.filter((n) => (n.date ?? '') >= shiftDay(parisDate(now), -30)),
+    now,
+    30,
+  ).average;
   const success = state && state.total > 0 ? Math.round((state.right / state.total) * 10) / 10 : null;
   const mastery: Mastery =
     focus.mastery < 0.34 || (success !== null && success < 0.4)
@@ -192,7 +198,7 @@ export function profileOf(
     level: levelOf(child.className),
     tone: isYoungLevel(child.className) ? 'ludique' : 'sobre',
     mastery,
-    average: m.average === null ? null : Math.round(m.average),
+    average: average === null ? null : Math.round(average),
     direction: m.trend === null ? 'inconnue' : Math.abs(m.trend) < 0.05 ? 'stable' : m.trend > 0 ? 'hausse' : 'baisse',
     success,
     modules: state?.seen ?? 0,
