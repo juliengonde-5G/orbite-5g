@@ -1514,6 +1514,21 @@ button {
   letter-spacing: 0.02em;
   opacity: 0.75;
 }
+.trend-note {
+  margin: 4px 14px 0;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.notes-mark {
+  margin-top: 3px;
+  font-weight: 700;
+}
+.trend-span {
+  margin-left: 4px;
+  font: 600 0.62rem/1 var(--text);
+  opacity: 0.8;
+}
 .subject-official {
   display: flex;
   flex-wrap: wrap;

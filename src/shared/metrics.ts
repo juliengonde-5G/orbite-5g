@@ -37,6 +37,10 @@ type PairedGrade<T extends Gradable> = ValidGrade<T> & { classAverage: number };
 export interface Metrics {
   average: number | null;
   trend: number | null;
+  /** Moyenne des `days` derniers jours ; `null` si aucune note. */
+  recentAverage: number | null;
+  /** Moyenne des `days` jours précédents ; `null` si aucune note. */
+  previousAverage: number | null;
   recentCount: number;
   previousCount: number;
   gap: number | null;
@@ -97,16 +101,16 @@ export function mean<T extends Gradable>(
 /**
  * Indicateurs d'une carte élève ou matière.
  * - `trend` : moyenne des `days` derniers jours moins celle des `days` jours
- *   précédents (fenêtres consécutives se terminant ce soir à minuit) ; `null` si
- *   l'une des deux fenêtres est vide.
+ *   précédents (fenêtres consécutives se terminant ce soir à minuit, heure de
+ *   Paris) ; `null` si l'une des deux fenêtres est vide. Une tendance à une seule
+ *   note par fenêtre n'est pas fiable : voir `steadyTrend`.
  * - `gap` / `classAverage` : calculés uniquement sur les notes qui ont une moyenne
  *   de classe, pour comparer des ensembles identiques.
  */
 export function metrics(notes: readonly Gradable[], now = new Date(), days = 30): Metrics {
-  // Fin de journée dans le fuseau d'exécution (navigateur), pour inclure les notes du jour.
-  const today = new Date(now);
-  today.setHours(23, 59, 59, 999);
-  const end = today.getTime();
+  // Fin de journée à Paris, comme les dates des notes (jours civils) : le résultat ne dépend
+  // ni du fuseau du navigateur ni de l'heure d'été.
+  const end = Date.parse(`${parisDate(now)}T23:59:59.999Z`);
   const cut = end - days * 86400000;
   const begin = cut - days * 86400000;
   const eligible = notes.filter(valid);
@@ -118,6 +122,8 @@ export function metrics(notes: readonly Gradable[], now = new Date(), days = 30)
   return {
     average: mean(eligible),
     trend: a !== null && b !== null ? a - b : null,
+    recentAverage: a,
+    previousAverage: b,
     recentCount: recent.length,
     previousCount: previous.length,
     gap: mean(pairs, (n) => score(n) - classScore(n)),
@@ -125,6 +131,18 @@ export function metrics(notes: readonly Gradable[], now = new Date(), days = 30)
     pairedCount: pairs.length,
     count: eligible.length,
   };
+}
+
+/** Nombre minimal de notes dans chaque fenêtre pour afficher une tendance par matière. */
+export const MIN_TREND_NOTES = 2;
+
+/**
+ * Tendance affichable d'une matière : celle de `metrics()` si chaque fenêtre compte au moins
+ * `MIN_TREND_NOTES` notes, sinon `null`. Une seule note ne dit pas si l'élève baisse ou si la
+ * note était simplement plus difficile ; mieux vaut ne rien afficher qu'un rouge trompeur.
+ */
+export function steadyTrend(m: Pick<Metrics, 'trend' | 'recentCount' | 'previousCount'>): number | null {
+  return m.trend !== null && m.recentCount >= MIN_TREND_NOTES && m.previousCount >= MIN_TREND_NOTES ? m.trend : null;
 }
 
 /** Regroupe les notes par `subjectId` (une sous-matière forme son propre groupe), triées par libellé. */

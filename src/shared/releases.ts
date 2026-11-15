@@ -17,6 +17,16 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.8.1',
+    date: '2026-11-15',
+    title: 'Moyennes et tendances plus lisibles',
+    notes: [
+      'La flèche de tendance d’une matière indique « 30 j » et, au toucher, les deux moyennes comparées. Elle n’apparaît qu’avec au moins deux notes sur chacune des deux périodes : une seule note ne suffit plus à afficher un recul.',
+      'Quand la moyenne officielle du collège s’écarte de plus d’un demi-point de la moyenne des notes affichées, les deux sont montrées (« officielle » et « notes »).',
+      'La fenêtre de 30 jours suit le jour civil à Paris, quel que soit le fuseau de l’appareil.',
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-11-15',
     title: 'Compétences : une page, des fiches sur mesure',
