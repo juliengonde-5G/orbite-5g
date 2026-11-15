@@ -509,7 +509,7 @@ export function createApp(options: AppOptions): http.Server {
     const sig = createHmac('sha256', secretDoc.secret)
       .update('file:' + payload)
       .digest('base64url');
-    return `${route}?t=${payload}.${sig}`;
+    return `${base}${route}?t=${payload}.${sig}`;
   };
 
   const readFileLink = (token: string | null): { k: string; f: string; m: string; d: string } => {
@@ -638,7 +638,7 @@ export function createApp(options: AppOptions): http.Server {
           async (ctx) => {
             requireAdmin(ctx);
             const token = hub.invite(ctx.data.label);
-            return { path: `/invite/${token}`, invites: hub.invites() };
+            return { path: `/invite/${token}`, families: hub.list(), invites: hub.invites() };
           },
         ],
         [

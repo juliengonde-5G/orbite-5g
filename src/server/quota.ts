@@ -21,10 +21,14 @@ export interface UsageMeter {
 export class MeteredCoach implements Coach {
   private readonly inner: Coach;
   private readonly meter: UsageMeter;
+  private readonly metered: boolean;
 
   constructor(inner: Coach, meter: UsageMeter) {
     this.inner = inner;
     this.meter = meter;
+    // Le plafond ne compte que les vrais appels à Anthropic : un conseil déjà en cache ne coûte rien.
+    this.metered = typeof inner.useMeter === 'function';
+    inner.useMeter?.(meter);
   }
 
   get configured(): boolean {
@@ -32,12 +36,12 @@ export class MeteredCoach implements Coach {
   }
 
   async advice(childId: string, child: Pick<Child, 'notes'>): Promise<string> {
-    this.meter.take();
+    if (!this.metered) this.meter.take();
     return this.inner.advice(childId, child);
   }
 
   async complete(system: string, user: string, maxTokens: number): Promise<string> {
-    this.meter.take();
+    if (!this.metered) this.meter.take();
     return this.inner.complete(system, user, maxTokens);
   }
 

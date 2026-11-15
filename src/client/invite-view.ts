@@ -7,6 +7,7 @@
  * le présente elle-même au serveur pour que le parent choisisse son PIN.
  */
 import { ApiError, hubApi } from './api.ts';
+import type { HubCreated } from '../shared/hub.ts';
 import { clear, h } from './dom.ts';
 
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
@@ -97,6 +98,7 @@ function family(root: HTMLElement, token: string): HTMLElement {
   });
   const consent = h('input', { type: 'checkbox', id: 'consent' }) as HTMLInputElement;
   const error = h('p.form-error', { role: 'alert' });
+  let created: HubCreated | null = null;
   const fail = (text: string) => {
     error.textContent = text;
   };
@@ -111,7 +113,8 @@ function family(root: HTMLElement, token: string): HTMLElement {
         if (!consent.checked) return fail('Coche la case pour continuer.');
         form.classList.add('is-busy');
         try {
-          const created = await hubApi.create(token, name.value, admin.value);
+          // L'invitation n'est utilisable qu'une fois : si le PIN est refusé, on réessaie sur la famille déjà créée.
+          created ??= await hubApi.create(token, name.value, admin.value);
           await hubApi.setupParent(created.url, created.adminName, pin.value, created.setupCode);
           show(root, done(created.url, created.name));
         } catch (err) {

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { Hub, HubError, slugify, slugPattern } from '../src/server/hub.ts';
 import { createHubServer } from '../src/server/hub-server.ts';
+import { ClaudeCoach } from '../src/server/coach.ts';
 import { MeteredCoach, QuotaError } from '../src/server/quota.ts';
 import type { Coach } from '../src/server/coach.ts';
 import { Vault } from '../src/server/vault.ts';
@@ -191,6 +192,44 @@ test('MeteredCoach : la famille ne peut ni changer ni vérifier la clé', async 
   await assert.rejects(() => metered.check('sk-ant-x'), QuotaError);
 });
 
+test('MeteredCoach : un conseil servi par le cache ne consomme pas le plafond', async () => {
+  let upstream = 0;
+  const transport = (async () => {
+    upstream++;
+    return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Révise un peu chaque soir.' }] }), {
+      status: 200,
+    });
+  }) as typeof fetch;
+  const inner = new ClaudeCoach('sk-ant-master', 'm', transport);
+  let used = 0;
+  const metered = new MeteredCoach(inner, {
+    take() {
+      if (used >= 2) throw new QuotaError('plafond');
+      used++;
+    },
+  });
+  const child = {
+    notes: [1, 2, 3].map((i) => ({
+      id: i,
+      subject: 'Maths',
+      subjectId: '1:',
+      title: 'Contrôle ' + i,
+      raw: String(10 + i),
+      value: 10 + i,
+      outOf: 20,
+      coefficient: 1,
+      classAverage: null,
+      excluded: false,
+      date: new Date().toISOString().slice(0, 10),
+    })),
+  } as never;
+  await metered.advice('e1', child);
+  await metered.advice('e1', child);
+  await metered.advice('e1', child);
+  assert.equal(upstream, 1);
+  assert.equal(used, 1);
+});
+
 /* ---------- Bout en bout ---------- */
 
 /** Navigateur minimal : cookies avec leur chemin, le plus précis envoyé en premier. */
@@ -259,6 +298,7 @@ test(
       assert.equal((await browser(port).post('/api/hub/invite', { label: 'x' })).status, 401);
       const invited = await julien.post('/api/hub/invite', { label: 'Famille Martin' });
       assert.equal(invited.status, 200);
+      assert.ok(Array.isArray(invited.body.families), 'la liste des familles accompagne l’invitation');
       const token = (invited.body.path as string).replace('/invite/', '');
       const page = await browser(port).get(invited.body.path);
       assert.equal(page.status, 200);

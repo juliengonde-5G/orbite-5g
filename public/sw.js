@@ -3,7 +3,7 @@
  * instantané et hors connexion. Les données (/api) ne sont jamais mises en
  * cache ici : elles restent sur le serveur, derrière le PIN.
  */
-const CACHE = 'orbite-shell-v6';
+const CACHE = 'orbite-shell-v7';
 const SHELL = ['/', '/style.css', '/client/app.js', '/favicon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -26,7 +26,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (
+    event.request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    /^(\/f\/[a-z0-9-]+)?\/api\//.test(url.pathname)
+  )
+    return;
   // Réseau d'abord (mises à jour immédiates), cache en secours hors connexion.
   event.respondWith(
     fetch(event.request)

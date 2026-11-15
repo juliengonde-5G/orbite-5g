@@ -61,6 +61,8 @@ export interface Coach {
   check(key: string): Promise<KeyCheck>;
   /** Texte libre pour le soutien scolaire : consigne, données, longueur maximale. */
   complete(system: string, user: string, maxTokens: number): Promise<string>;
+  /** Branche un compteur d'appels réels à Anthropic (clé partagée entre familles). Facultatif. */
+  useMeter?(meter: { take(): void }): void;
 }
 
 export class ClaudeCoach implements Coach {
@@ -70,6 +72,7 @@ export class ClaudeCoach implements Coach {
   private readonly fetch: typeof fetch;
   private readonly cache = new Map<string, Promise<string>>();
   private active = 0;
+  private meter: { take(): void } | null = null;
 
   constructor(
     key = process.env.ANTHROPIC_API_KEY || '',
@@ -84,6 +87,10 @@ export class ClaudeCoach implements Coach {
 
   get configured(): boolean {
     return !!this.key;
+  }
+
+  useMeter(meter: { take(): void }): void {
+    this.meter = meter;
   }
 
   setKey(key: string | null): void {
@@ -131,6 +138,7 @@ export class ClaudeCoach implements Coach {
   async complete(system: string, user: string, maxTokens: number): Promise<string> {
     if (!this.configured) throw new Error('Clé Claude absente.');
     if (this.active >= 3) throw new Error('Génération en cours, réessaie dans un instant.');
+    this.meter?.take();
     this.active++;
     try {
       const res = await this.fetch('https://api.anthropic.com/v1/messages', {
