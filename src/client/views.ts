@@ -618,6 +618,7 @@ function alertsBlock(children: Child[], actions: Actions): HTMLElement | null {
               h('span.alert-subject', subjectLabel(g.label)),
               h('span.fact.trend-down', { title: trendTitle(m) }, signed(trend), h('small.trend-span', '30 j')),
             ),
+            trendNote(m),
           ),
         ),
     ),
@@ -801,6 +802,7 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
                       gapped && h('small.official-mark.notes-mark', `notes ${average(m.average)}`),
                     ),
                   ),
+                  open && trend !== null && trendNote(m),
                   open && off && officialDetail(off),
                   open &&
                     h(
@@ -826,6 +828,9 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
 function trendTitle(m: Metrics): string {
   return `Moyenne des 30 derniers jours (${average(m.recentAverage)}, ${m.recentCount} notes) moins celle des 30 jours précédents (${average(m.previousAverage)}, ${m.previousCount} notes).`;
 }
+
+/** La même explication, écrite à l'écran : l'infobulle `title` n'existe pas au toucher. */
+const trendNote = (m: Metrics): HTMLElement => h('p.trend-note', trendTitle(m));
 
 /** Détail d'une matière : moyenne de classe, fourchette et professeurs (jamais de rang). */
 function officialDetail(s: SubjectAverage): HTMLElement | null {
