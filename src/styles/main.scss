@@ -550,7 +550,7 @@ button {
   height: var(--dock);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--n, 5), 1fr);
   padding: 6px;
   border-radius: 26px;
   background: color-mix(in srgb, var(--surface) 84%, transparent);
@@ -565,7 +565,7 @@ button {
   top: 6px;
   bottom: 6px;
   left: 6px;
-  width: calc((100% - 12px) / 5);
+  width: calc((100% - 12px) / var(--n, 5));
   border-radius: 20px;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   transform: translateX(calc(var(--i, 0) * 100%));
@@ -597,6 +597,19 @@ button {
     .tab-icon {
       transform: translateY(-1px) scale(1.06);
     }
+  }
+}
+// Dock à six onglets ou plus : sur téléphone, seul l'onglet actif garde son nom.
+@media (max-width: 899px) {
+  .tabbar.is-dense .tab:not(.is-active) .tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .tabbar.is-dense .tab.is-active {
+    font-size: 0.66rem;
   }
 }
 .tab-icon {
@@ -3822,4 +3835,44 @@ button {
 .invite form {
   display: grid;
   gap: 12px;
+}
+
+// ---------- Aide ----------
+
+.help-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 4px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  &:first-of-type {
+    border-top: 0;
+  }
+}
+.help-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.help-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  small {
+    color: var(--ink-3);
+    font-size: 0.82rem;
+  }
 }

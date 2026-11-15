@@ -17,6 +17,16 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.7.1',
+    date: '2026-11-15',
+    title: 'Un bouton Aide dans le menu',
+    notes: [
+      'Les Nouveautés et le signalement d’un problème ont leur bouton « Aide » dans la barre du bas, au lieu des Réglages.',
+      'Le parent administrateur y retrouve aussi les signalements reçus.',
+      'Sur téléphone, seul l’onglet actif affiche son nom, pour que la barre reste lisible.',
+    ],
+  },
+  {
     version: '1.7.0',
     date: '2026-11-15',
     title: 'Soutien scolaire : un audit chaque jour',
