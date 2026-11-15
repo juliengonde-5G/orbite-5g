@@ -17,6 +17,16 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.7.0',
+    date: '2026-11-15',
+    title: 'Soutien scolaire : un audit chaque jour',
+    notes: [
+      'Chaque matin, Orbite relit les évaluations et fixe 3 compétences à travailler par enfant, en commençant par les plus faibles et les plus récentes.',
+      'L’enfant reçoit une notification le matin, avec un message adapté à sa classe ; il en reçoit aussi une quand un parent active le soutien.',
+      'Les parents trouvent une note qui explique le fonctionnement, et un suivi des compétences : niveau ÉcoleDirecte, travail fait ici, régularité sur 14 jours.',
+    ],
+  },
+  {
     version: '1.6.0',
     date: '2026-11-15',
     title: 'Plusieurs familles',

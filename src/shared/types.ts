@@ -424,6 +424,8 @@ export interface PushPrefs {
   bag: boolean;
   /** Récapitulatif du dimanche soir (parents). */
   recap: boolean;
+  /** Soutien scolaire : activation et compétences du jour (élèves). */
+  support: boolean;
 }
 
 export interface PushStatus {

@@ -102,7 +102,7 @@ test('points à travailler : dernier niveau de chaque compétence, matières du 
   assert.ok(!byKey.has('c:maths:C3'), 'une compétence sans niveau ne compte pas');
   assert.ok(![...byKey.keys()].some((k) => k.includes('H1')), 'l’histoire est hors périmètre');
   assert.ok(byKey.has('s:maths'));
-  assert.ok(!byKey.has('s:anglais'), 'une seule note ne suffit pas à juger une matière');
+  assert.equal(byKey.get('s:anglais')?.mastery, 0.5, 'une seule note ne suffit pas à juger une matière : niveau moyen');
 });
 
 test('plan du jour : trois modules au plus, fragiles d’abord, matières variées, rien de maîtrisé', () => {
@@ -157,7 +157,8 @@ test('révision espacée : un point reste en attente jusqu’à son échéance',
     last: '2026-11-10',
   };
   const focuses = [focus('a', 'maths', 0.2)];
-  assert.equal(planDay(focuses, { focuses: { a: state } }, '2026-11-13').length, 0);
+  // Pas à l'échéance : le point n'est repris que pour compléter la journée (« révision »).
+  assert.equal(planDay(focuses, { focuses: { a: state } }, '2026-11-13')[0]?.reason, 'review');
   const due = planDay(focuses, { focuses: { a: state } }, '2026-11-14');
   assert.equal(due[0]?.reason, 'due');
   assert.equal(due[0]?.difficulty, 2);
@@ -395,7 +396,11 @@ test('service : jamais plus de trois modules par jour, reprise le lendemain avec
   assert.equal(next.doneToday, 0);
   assert.deepEqual(
     next.plan.map((p) => [p.key, p.reason]),
-    [['s:maths', 'new']],
+    [
+      ['s:maths', 'new'],
+      ['s:anglais', 'new'],
+      ['s:francais', 'new'],
+    ],
   );
   clock.value = new Date('2026-11-14T08:00:00+01:00');
   const back = support.status('1:11', child);
@@ -495,7 +500,11 @@ test('service : un module régénéré après expiration reçoit un autre identi
 
 test('matière : seules les notes des quatre derniers mois comptent', () => {
   const old = focusesOf({ notes: [note('MATHS', '2026-01-10', 4), note('MATHS', '2026-01-20', 5)] }, NOW);
-  assert.ok(!old.some((f) => f.key === 's:maths'), 'deux vieilles notes ne font pas une matière à réviser');
+  assert.equal(
+    old.find((f) => f.key === 's:maths')?.mastery,
+    0.5,
+    'deux vieilles notes ne jugent pas la matière : niveau moyen',
+  );
   const mixed = focusesOf(
     { notes: [note('MATHS', '2026-01-10', 2), note('MATHS', '2026-10-20', 18), note('MATHS', '2026-11-05', 16)] },
     NOW,

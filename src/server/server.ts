@@ -36,6 +36,7 @@ import { Hub, HubError } from './hub.ts';
 import { createHubServer } from './hub-server.ts';
 import { ReportError, Reports } from './reports.ts';
 import { ClaudeExerciseWriter, Support, SupportError } from './support.ts';
+import { announceActivation, runDailyAudit } from './support-daily.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
   BagDay,
@@ -336,6 +337,18 @@ export function createApp(options: AppOptions): http.Server {
   const support = options.support ?? new Support(vault, new ClaudeExerciseWriter(coach));
   const reports = options.reports ?? new Reports(vault);
   const pushTimer = options.background ? notifier.start() : undefined;
+  // Audit quotidien du soutien : toutes les cinq minutes, sans effet une fois la journée faite.
+  let auditing = false;
+  const auditTimer = options.background
+    ? setInterval(() => {
+        if (auditing) return;
+        auditing = true;
+        void runDailyAudit({ support, family, notifier, ed })
+          .catch(() => undefined)
+          .finally(() => (auditing = false));
+      }, 5 * 60000)
+    : undefined;
+  auditTimer?.unref();
   const loginAttempts: number[] = [];
 
   // Appareil déjà utilisé par la famille : cookie signé, sans valeur secrète, qui
@@ -1062,8 +1075,19 @@ export function createApp(options: AppOptions): http.Server {
       async (ctx) => {
         requireParent(ctx);
         const childId = await canSee(requireMember(ctx), ctx.data.childId);
-        support.setEnabled(childId, ctx.data.enabled === true);
-        return support.status(childId, await supportChild(childId));
+        const child = await supportChild(childId);
+        const enabled = ctx.data.enabled === true;
+        if (support.setEnabled(childId, enabled) && enabled)
+          void announceActivation(family, notifier, childId, child.className).catch(() => undefined);
+        return support.status(childId, child);
+      },
+    ],
+    [
+      'POST /api/support/monitor',
+      async (ctx) => {
+        requireParent(ctx);
+        const childId = await canSee(requireMember(ctx), ctx.data.childId);
+        return support.monitor(childId, await supportChild(childId));
       },
     ],
     [
@@ -1434,6 +1458,7 @@ export function createApp(options: AppOptions): http.Server {
   server.on('close', () => {
     if (background) clearInterval(background);
     if (pushTimer) clearInterval(pushTimer);
+    if (auditTimer) clearInterval(auditTimer);
   });
   return server;
 }

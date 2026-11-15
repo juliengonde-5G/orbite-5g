@@ -63,6 +63,7 @@ const LABELS: Record<keyof PushPrefs, [string, string]> = {
   life: ['Vie scolaire', 'Absences, retards, sanctions et encouragements.'],
   bag: ['Cartable à 19 h', 'La veille d’un jour de classe : prépare ton sac.'],
   recap: ['Récap du dimanche', 'Le dimanche soir : la semaine de chaque enfant.'],
+  support: ['Soutien scolaire', 'Le matin : les 3 compétences à travailler aujourd’hui.'],
 };
 
 export function notificationsCard(rerender: () => void): HTMLElement | null {
@@ -96,7 +97,7 @@ export function notificationsCard(rerender: () => void): HTMLElement | null {
     }
   };
   const keys = (Object.keys(LABELS) as (keyof PushPrefs)[]).filter((k) =>
-    me.role === 'parent' ? k !== 'bag' : k !== 'recap',
+    me.role === 'parent' ? k !== 'bag' && k !== 'support' : k !== 'recap',
   );
   const blockedHere = !supported() ? (ios() && !standalone() ? 'ios' : 'unsupported') : null;
   return h(
