@@ -34,6 +34,7 @@ export type Route =
   | 'docs'
   | 'train'
   | 'news'
+  | 'setup'
   | 'me';
 
 export interface HomeworkState {

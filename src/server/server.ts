@@ -32,6 +32,8 @@ import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd, demoExerciseWriter } from './demo.ts';
 import { Notifier } from './notifier.ts';
+import { Hub, HubError } from './hub.ts';
+import { createHubServer } from './hub-server.ts';
 import { ReportError, Reports } from './reports.ts';
 import { ClaudeExerciseWriter, Support, SupportError } from './support.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
@@ -168,6 +170,16 @@ export interface AppOptions {
   /** Soutien scolaire imposé (tests). */
   support?: Support;
   reports?: Reports;
+  /** Chemin de cette famille (`/f/dupont-k7x2`) ; vide pour la famille « maison ». */
+  basePath?: string;
+  /** Nom affiché de la famille (onglet, icône) ; vide pour la famille « maison ». */
+  familyName?: string;
+  /** Clé Claude fournie par l'hébergeur : la famille ne la voit ni ne la change. */
+  keyManaged?: boolean;
+  /** Plateforme multi-familles : seule la famille « maison » la reçoit. */
+  hub?: Hub;
+  /** Appelé avec la clé effective (application ou environnement) au démarrage et à chaque changement. */
+  onKey?: (key: string | null) => void;
 }
 
 interface SeenDoc {
@@ -252,9 +264,11 @@ export function createApp(options: AppOptions): http.Server {
   const family = new Family(vault, options.familySeed ?? '');
   const ed = new EdService(vault, options.edFactory, options.refreshFloor);
   const coach = options.coach ?? new ClaudeCoach();
+  const base = options.basePath ?? '';
   const claude = vault.load<ClaudeDoc>('claude', { version: 1, key: null, updatedAt: null, check: null });
   if (claude.key) coach.setKey(claude.key);
   const envKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  options.onKey?.(claude.key || envKey || null);
   const claudeStatus = (): ClaudeKeyStatus => {
     const key = claude.key || envKey;
     return {
@@ -318,7 +332,7 @@ export function createApp(options: AppOptions): http.Server {
     }
     return 'mailto:orbite@example.com';
   })();
-  const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject });
+  const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject, base });
   const support = options.support ?? new Support(vault, new ClaudeExerciseWriter(coach));
   const reports = options.reports ?? new Reports(vault);
   const pushTimer = options.background ? notifier.start() : undefined;
@@ -354,12 +368,14 @@ export function createApp(options: AppOptions): http.Server {
     const secure = ctx.secure ? '; Secure' : '';
     const cookies = [
       token
-        ? `o5g=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=15552000${secure}`
-        : `o5g=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,
+        ? `o5g=${token}; Path=${base || '/'}; HttpOnly; SameSite=Strict; Max-Age=15552000${secure}`
+        : `o5g=; Path=${base || '/'}; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,
     ];
     if (token) {
       const id = randomBytes(16).toString('hex');
-      cookies.push(`o5g_known=${id}.${sign(id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000${secure}`);
+      cookies.push(
+        `o5g_known=${id}.${sign(id)}; Path=${base || '/'}; HttpOnly; SameSite=Strict; Max-Age=34560000${secure}`,
+      );
     }
     ctx.res.setHeader('Set-Cookie', cookies);
   };
@@ -568,6 +584,9 @@ export function createApp(options: AppOptions): http.Server {
       ed: ctx.me?.role === 'parent' ? ed.status() : null,
       coaching: coach.configured,
       version,
+      keyManaged: options.keyManaged === true,
+      hub: !!options.hub,
+      familyName: options.familyName ?? '',
     };
   };
 
@@ -581,7 +600,60 @@ export function createApp(options: AppOptions): http.Server {
     }
   };
 
+  const hub = options.hub;
+  const hubCall = <T>(run: () => T): T => {
+    try {
+      return run();
+    } catch (e) {
+      if (e instanceof HubError) throw new HttpError(e.message, e.code);
+      throw e;
+    }
+  };
+  const hubRoutes: [string, (ctx: Context) => Promise<unknown>][] = hub
+    ? [
+        // Pages publiques de l'invitation : le jeton à usage unique tient lieu de droit d'accès.
+        ['POST /api/hub/invite/check', async (ctx) => hubCall(() => hub.inspect(ctx.data.token))],
+        [
+          'POST /api/hub/family/create',
+          async (ctx) => {
+            const { family, setupCode } = hubCall(() => hub.create(ctx.data.token, ctx.data));
+            return {
+              slug: family.slug,
+              name: family.name,
+              url: `/f/${family.slug}/`,
+              setupCode,
+              adminName: family.seed.split(':')[0],
+            };
+          },
+        ],
+        [
+          'GET /api/hub/families',
+          async (ctx) => {
+            requireAdmin(ctx);
+            return { families: hub.list(), invites: hub.invites() };
+          },
+        ],
+        [
+          'POST /api/hub/invite',
+          async (ctx) => {
+            requireAdmin(ctx);
+            const token = hub.invite(ctx.data.label);
+            return { path: `/invite/${token}`, invites: hub.invites() };
+          },
+        ],
+        [
+          'POST /api/hub/family/update',
+          async (ctx) => {
+            requireAdmin(ctx);
+            hubCall(() => hub.update(ctx.data.slug, ctx.data));
+            return { families: hub.list(), invites: hub.invites() };
+          },
+        ],
+      ]
+    : [];
+
   const routes = new Map<string, (ctx: Context) => Promise<unknown>>([
+    ...hubRoutes,
     [
       'POST /api/setup',
       async (ctx) => {
@@ -1054,6 +1126,15 @@ export function createApp(options: AppOptions): http.Server {
       'GET /api/admin/claude',
       async (ctx) => {
         requireAdmin(ctx);
+        if (options.keyManaged)
+          return {
+            configured: coach.configured,
+            source: null,
+            masked: null,
+            updatedAt: null,
+            check: null,
+            managed: true,
+          };
         return claudeStatus();
       },
     ],
@@ -1061,6 +1142,7 @@ export function createApp(options: AppOptions): http.Server {
       'POST /api/admin/claude',
       async (ctx) => {
         requireAdmin(ctx);
+        if (options.keyManaged) throw new HttpError('La clé Claude est fournie par Orbite.', 403);
         const key = typeof ctx.data.key === 'string' ? ctx.data.key.trim() : '';
         if (!/^sk-ant-[\w-]{20,280}$/.test(key))
           throw new HttpError('Clé invalide : elle commence par « sk-ant- » (console.anthropic.com → API Keys).', 400);
@@ -1072,6 +1154,7 @@ export function createApp(options: AppOptions): http.Server {
         claude.check = check;
         vault.save('claude', claude);
         coach.setKey(key);
+        options.onKey?.(key);
         return claudeStatus();
       },
     ],
@@ -1079,9 +1162,11 @@ export function createApp(options: AppOptions): http.Server {
       'POST /api/admin/claude/remove',
       async (ctx) => {
         requireAdmin(ctx);
+        if (options.keyManaged) throw new HttpError('La clé Claude est fournie par Orbite.', 403);
         Object.assign(claude, { key: null, updatedAt: null, check: null });
         vault.save('claude', claude);
         coach.setKey(null);
+        options.onKey?.(envKey || null);
         return claudeStatus();
       },
     ],
@@ -1150,6 +1235,52 @@ export function createApp(options: AppOptions): http.Server {
     ],
   ]);
 
+  const escapeHtml = (text: string) =>
+    text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+  const variant = (source: Asset | undefined, body: string, type?: string): Asset | undefined => {
+    if (!source) return undefined;
+    const bytes = Buffer.from(body);
+    return {
+      ...source,
+      type: type ?? source.type,
+      body: bytes,
+      etag: '"' + createHash('sha256').update(bytes).digest('base64url').slice(0, 22) + '"',
+      immutable: false,
+    };
+  };
+  /** Pages qui dépendent de la famille : accueil de son lien, manifeste de l'appli, page d'invitation. */
+  const pageAsset = (path: string): Asset | undefined => {
+    const index = assets.get('/');
+    if (!index) return undefined;
+    const html = index.body.toString('utf8');
+    if (hub && /^\/invite\/[A-Za-z0-9_-]{20,40}$/.test(path))
+      return variant(
+        index,
+        html.replace('<head>', `<head>\n    <meta name="orbite-invite" content="${path.slice('/invite/'.length)}" />`),
+      );
+    if (!base) return undefined;
+    if (path === '/')
+      return variant(
+        index,
+        html
+          .replace('<head>', `<head>\n    <meta name="orbite-base" content="${base}" />`)
+          .replace('href="/manifest.webmanifest"', `href="${base}/manifest.webmanifest"`)
+          .replace('<title>Orbite</title>', `<title>Orbite · ${escapeHtml(options.familyName ?? '')}</title>`),
+      );
+    if (path === '/manifest.webmanifest') {
+      const manifest = JSON.parse(assets.get('/manifest.webmanifest')?.body.toString('utf8') ?? '{}') as Record<
+        string,
+        unknown
+      >;
+      return variant(
+        index,
+        JSON.stringify({ ...manifest, id: `${base}/`, start_url: `${base}/`, scope: `${base}/` }),
+        'application/manifest+json',
+      );
+    }
+    return undefined;
+  };
+
   const baseHeaders = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
@@ -1188,7 +1319,7 @@ export function createApp(options: AppOptions): http.Server {
 
       if (!path.startsWith('/api/')) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError('Méthode refusée.', 405);
-        const asset = assets.get(path);
+        const asset = pageAsset(path) ?? assets.get(path);
         if (!asset) throw new HttpError('Page introuvable.', 404);
         const headers: Record<string, string> = {
           ...baseHeaders,
@@ -1321,16 +1452,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     version = (JSON.parse(readFileSync(join(rootPath, 'package.json'), 'utf8')) as { version: string }).version;
   } catch {}
-  const server = createApp({
+  const demo = process.env.ORBITE_DEMO === '1';
+  const server = createHubServer({
     vault,
     familySeed: process.env.ORBITE_FAMILY || '',
     publicUrl: process.env.ORBITE_PUBLIC_URL || '',
     allowedHosts: (process.env.ORBITE_ALLOWED_HOSTS || '').split(','),
     version,
     background: true,
-    ...(process.env.ORBITE_DEMO === '1'
-      ? { edFactory: () => new DemoEd(), support: new Support(vault, demoExerciseWriter) }
-      : {}),
+    ...(demo ? { edFactory: () => new DemoEd(), support: new Support(vault, demoExerciseWriter) } : {}),
+    ...(demo ? { familyOptions: (v) => ({ support: new Support(v, demoExerciseWriter) }) } : {}),
   });
   const shutdown = () => server.close(() => process.exit(0));
   process.on('SIGINT', shutdown);

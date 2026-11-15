@@ -260,6 +260,11 @@ export interface SessionInfo {
   ed: EdStatus | null;
   coaching: boolean;
   version: string;
+  /** Clé Claude fournie par l'hébergeur : aucun réglage de clé pour cette famille. */
+  keyManaged: boolean;
+  /** Vrai pour la famille « maison », qui invite et gère les autres familles. */
+  hub: boolean;
+  familyName: string;
 }
 
 /** Données d'un élève pour l'interface : notes, devoirs du jour et repères de nouveauté. */
@@ -406,6 +411,8 @@ export interface ClaudeKeyStatus {
   updatedAt: string | null;
   /** Dernière vérification auprès d'Anthropic. */
   check: 'ok' | 'refused' | 'unreachable' | null;
+  /** Clé fournie par l'hébergeur : elle ne se règle pas dans cette famille. */
+  managed?: boolean;
 }
 
 /** Ce qu'un membre veut recevoir en notification (réglé appareil par appareil côté serveur). */

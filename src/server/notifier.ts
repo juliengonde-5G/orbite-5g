@@ -92,6 +92,8 @@ export interface NotifierOptions {
   subject: string;
   send?: typeof sendPush;
   now?: () => Date;
+  /** Préfixe du lien de la famille (`/f/dupont-k7x2`) : les notifications rouvrent la bonne famille. */
+  base?: string;
 }
 
 export class Notifier {
@@ -104,7 +106,12 @@ export class Notifier {
 
   constructor(options: NotifierOptions) {
     this.options = options;
-    this.send = options.send ?? sendPush;
+    const send = options.send ?? sendPush;
+    const base = options.base ?? '';
+    this.send = base
+      ? (sub, message, ...rest) =>
+          send(sub, { ...(message as PushMessage), url: base + (message as PushMessage).url }, ...rest)
+      : send;
     this.now = options.now ?? (() => new Date());
     this.doc = options.vault.load<PushDoc>('push', {
       version: 1,

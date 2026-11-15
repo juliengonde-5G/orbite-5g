@@ -27,6 +27,7 @@ import { familyDocsBlock } from './docs-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
 import { trainCard } from './train-view.ts';
 import { newsBanner } from './news-view.ts';
+import { setupCard } from './setup-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note, Period, SubjectAverage } from '../shared/types.ts';
@@ -549,6 +550,7 @@ export function familyHome(actions: Actions): HTMLElement {
     edBanner(actions),
     h(
       'div.flow',
+      setupCard(actions),
       newsBanner(actions),
       h(
         'button.recap-link',

@@ -9,6 +9,7 @@ import { state } from './state.ts';
 import { sky } from './views.ts';
 import { notificationsCard } from './push-view.ts';
 import { helpCard, reportsBlock } from './news-view.ts';
+import { hubBlock } from './hub-view.ts';
 import type { AuthResult, ClaudeKeyStatus, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
 export interface SettingsActions {
@@ -138,7 +139,7 @@ function confirmSheet(title: string, text: string, action: string, run: () => Pr
 
 /* ---------- ÉcoleDirecte ---------- */
 
-function edConnectSheet(actions: SettingsActions): void {
+export function edConnectSheet(actions: SettingsActions): void {
   sheet('Connecter ÉcoleDirecte', (close) => {
     const body = h('div.sheet-body');
     const error = h('p.form-error', { role: 'alert' });
@@ -439,7 +440,7 @@ function envNote(s: ClaudeKeyStatus | null): string {
 
 /* ---------- Profils de la famille ---------- */
 
-function memberSheet(m: MemberView, actions: SettingsActions, refresh: () => void): void {
+export function memberSheet(m: MemberView, actions: SettingsActions, refresh: () => void): void {
   sheet(m.name, (close) => {
     const body = h('div.sheet-body');
     const students = state.session?.ed?.students ?? [];
@@ -609,7 +610,7 @@ function memberSheet(m: MemberView, actions: SettingsActions, refresh: () => voi
   });
 }
 
-function addMemberSheet(refresh: () => void): void {
+export function addMemberSheet(refresh: () => void): void {
   sheet('Ajouter un profil', (close) => {
     const name = h('input.text-input', { placeholder: 'Prénom', 'aria-label': 'Prénom', autocomplete: 'off' });
     const grade = h('input.text-input', { placeholder: 'Classe (facultatif)', 'aria-label': 'Classe' });
@@ -838,9 +839,10 @@ export function meView(actions: SettingsActions): HTMLElement {
     ),
     notificationsCard(() => actions.rerender()),
     me.role === 'parent' && edCard(actions),
-    me.role === 'parent' && me.admin && claudeCard(actions),
+    me.role === 'parent' && me.admin && !state.session?.keyManaged && claudeCard(actions),
     me.role === 'parent' && competenceBlock(),
     me.role === 'parent' && me.admin && familyBlock(actions),
+    me.role === 'parent' && me.admin && state.session?.hub === true && hubBlock(actions),
     me.role === 'parent' && me.admin && reportsBlock(actions),
     helpCard(actions),
     installHint(),

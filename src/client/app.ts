@@ -11,7 +11,7 @@ import { clear, h, icon, tap } from './dom.ts';
 import { renderLock } from './lock.ts';
 import { resetData, state, type Route } from './state.ts';
 import { bagKey, bagView, kitSheet } from './bag-view.ts';
-import { meView, sheet } from './settings.ts';
+import { meView, sheet, type SettingsActions } from './settings.ts';
 import { resetNotifications } from './push-view.ts';
 import { parisHour } from '../shared/metrics.ts';
 import { childColor, familyHome, gradesView, studentHome, tasksView, type Actions } from './views.ts';
@@ -20,6 +20,8 @@ import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
 import { docsView } from './docs-view.ts';
 import { newsView } from './news-view.ts';
+import { inviteView } from './invite-view.ts';
+import { setupView } from './setup-view.ts';
 import { markSupportStale, trainView } from './train-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
@@ -39,6 +41,7 @@ const HASH: Record<Route, string> = {
   docs: 'documents',
   train: 'entrainement',
   news: 'nouveautes',
+  setup: 'installation',
   me: 'moi',
 };
 
@@ -500,22 +503,26 @@ function waiting(text: string): HTMLElement {
   return h('div.screen', h('div.empty.empty-center', h('p.empty-title', text)));
 }
 
+function settingsActions(): SettingsActions {
+  return {
+    rerender: render,
+    back: () => actions.go('home'),
+    reloadSession: async () => {
+      state.session = await api.session();
+      applyPrefs();
+    },
+    reloadData: () => void loadData(),
+    logout: () => void logout(),
+    toast,
+    go: (route) => actions.go(route),
+  };
+}
+
 function currentView(): HTMLElement {
   const me = state.session?.me;
   if (!me) return h('div');
-  if (state.route === 'me')
-    return meView({
-      rerender: render,
-      back: () => actions.go('home'),
-      reloadSession: async () => {
-        state.session = await api.session();
-        applyPrefs();
-      },
-      reloadData: () => void loadData(),
-      logout: () => void logout(),
-      toast,
-      go: (route) => actions.go(route),
-    });
+  if (state.route === 'me') return meView(settingsActions());
+  if (state.route === 'setup' && me.admin) return setupView(settingsActions());
   if (state.route === 'news') return newsView({ go: (route) => actions.go(route), rerender: render, toast });
   if (!state.data) {
     if (state.dataError) return waiting(state.dataError);
@@ -598,6 +605,7 @@ function render(): void {
     const own =
       state.route === 'me' ||
       state.route === 'news' ||
+      state.route === 'setup' ||
       state.route === 'home' ||
       state.route === 'recap' ||
       state.route === 'docs' ||
@@ -640,6 +648,9 @@ function unlocked(session: SessionInfo): void {
 }
 
 async function boot(): Promise<void> {
+  // Page d'invitation : pas de session, la famille se crée ici.
+  const invite = document.querySelector('meta[name="orbite-invite"]')?.getAttribute('content');
+  if (invite) return inviteView(root, invite);
   let session: SessionInfo;
   try {
     session = await api.session();
