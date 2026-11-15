@@ -9,7 +9,7 @@
  * Fonctionnement : `runDailyAudit` est appelé toutes les cinq minutes par le serveur ;
  * il ne fait rien tant que l'audit du jour est fait et la notification partie.
  *
- * Points d'attention : sans accès à ÉcoleDirecte (panne, compte non relié), l'audit est
+ * Points d'attention : sans données fraîches d'ÉcoleDirecte (panne, compte non relié), l'audit est
  * reporté au passage suivant ; le plan reste alors calculé à la première ouverture.
  */
 import { parisHour } from '../shared/metrics.ts';
@@ -40,8 +40,9 @@ export async function runDailyAudit(options: DailyAuditOptions): Promise<number>
   if (parisHour(now) < AUDIT_HOUR) return 0;
   const enabled = support.enabledChildren();
   if (!enabled.length) return 0;
-  const { dashboard } = await ed.dashboard(30 * 60000).catch(() => ({ dashboard: null }));
-  if (!dashboard) return 0;
+  const { dashboard, stale } = await ed.dashboard(30 * 60000).catch(() => ({ dashboard: null, stale: true }));
+  // Données anciennes (ÉcoleDirecte en panne) : on réessaie au passage suivant plutôt que de figer un plan périmé.
+  if (!dashboard || stale) return 0;
   let notified = 0;
   for (const childId of enabled) {
     const child = dashboard.children.find((c) => c.id === childId);

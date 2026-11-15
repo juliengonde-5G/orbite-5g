@@ -265,3 +265,44 @@ test('suivi : niveau école et travail complémentaire côte à côte, sans chan
     ['maths', 'francais', 'anglais'],
   );
 });
+
+test('audit : données périmées, l’audit attend la prochaine lecture fraîche', async () => {
+  const { support, child, clock } = setup();
+  const { notifier, sent } = fakeNotifier();
+  support.setEnabled('1:11', true);
+  clock.value = new Date('2026-11-12T09:00:00+01:00');
+  const dashboard = { children: [child] } as unknown as Dashboard;
+  let stale = true;
+  const options = () => ({
+    support,
+    family: familyOf(kid('Léo')),
+    notifier,
+    ed: { dashboard: async () => ({ dashboard, stale }) },
+    now: () => clock.value,
+  });
+  assert.equal(await runDailyAudit(options()), 0);
+  assert.equal(support.pendingNotice('1:11'), null, 'aucun plan figé sur des données anciennes');
+  stale = false;
+  assert.equal(await runDailyAudit(options()), 1);
+  assert.equal(sent.length, 1);
+});
+
+test('suivi : une moyenne absente reste absente, et celle des 30 jours ignore les vieilles notes', () => {
+  const none = monitorOf({ notes: [] }, emptySupport(), '2026-11-12', NOW);
+  assert.ok(
+    none.skills.every((s) => s.average === null),
+    'aucune note : pas de moyenne inventée',
+  );
+  assert.ok(none.subjects.every((s) => s.average === null));
+
+  const lone = monitorOf({ notes: [note('ANGLAIS', '2026-11-05', 6)] }, emptySupport(), '2026-11-12', NOW);
+  assert.equal(lone.skills.find((s) => s.key === 's:anglais')?.average, 6, 'la vraie note, pas 10/20');
+
+  const old = monitorOf({ notes: [note('MATHS', '2026-09-20', 18)] }, emptySupport(), '2026-11-12', NOW);
+  assert.equal(
+    old.subjects.find((s) => s.subject === 'maths')?.average,
+    null,
+    'une note de septembre n’est pas sur 30 jours',
+  );
+  assert.equal(old.skills.find((s) => s.key === 's:maths')?.average, 18);
+});

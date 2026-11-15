@@ -52,6 +52,8 @@ export interface Focus {
   source: 'competence' | 'matiere';
   /** Jour de la dernière évaluation connue pour ce point (`YYYY-MM-DD`), si elle existe. */
   evaluated?: string;
+  /** Moyenne /20 réelle de la matière (notes ÉcoleDirecte), pour une révision générale ; absente sans note. */
+  average?: number;
   /** Point faible d'une évaluation récente (moins de 30 jours) : il passe devant les autres. */
   urgent?: boolean;
 }
@@ -167,6 +169,7 @@ export function focusesOf(child: Pick<Child, 'notes'>, now = new Date()): Focus[
       (n) => (n.date ?? '') >= since && (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === subject,
     );
     const m = metrics(notes, now, 120);
+    const all = metrics(notes, now, 120);
     const known = m.average !== null && m.count >= 2;
     const lastNote = notes.reduce((d, n) => ((n.date ?? '') > d ? (n.date ?? '') : d), '');
     const weak = metrics(
@@ -182,6 +185,7 @@ export function focusesOf(child: Pick<Child, 'notes'>, now = new Date()): Focus[
       mastery: known ? Math.min(1, Math.max(0, (m.average as number) / 20)) : 0.5,
       source: 'matiere',
       ...(lastNote ? { evaluated: lastNote } : {}),
+      ...(all.average !== null ? { average: all.average } : {}),
       ...(weak !== null && weak < 10 ? { urgent: true } : {}),
     });
   }
@@ -419,7 +423,7 @@ export function monitorOf(
       label: focus.label,
       source: focus.source,
       level,
-      average: focus.source === 'matiere' ? Math.round(focus.mastery * 20 * 10) / 10 : null,
+      average: focus.average === undefined ? null : Math.round(focus.average * 10) / 10,
       evaluated: focus.evaluated ?? null,
       work: worked
         ? {
@@ -449,17 +453,20 @@ export function monitorOf(
   const summary = summarize(support.history, today);
   const since = shiftDay(today, -120);
   const subjects = SUPPORT_SUBJECTS.map((subject) => {
-    const m = metrics(
-      child.notes.filter(
-        (n) => (n.date ?? '') >= since && (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === subject,
-      ),
+    const mine120 = child.notes.filter(
+      (n) => (n.date ?? '') >= since && (subjectOf(n.parentSubject) ?? subjectOf(n.subject)) === subject,
+    );
+    // La moyenne affichée porte sur 30 jours ; la tendance garde l'historique dont elle a besoin.
+    const m = metrics(mine120, now, 30);
+    const average30 = metrics(
+      mine120.filter((n) => (n.date ?? '') >= shiftDay(today, -30)),
       now,
       30,
-    );
+    ).average;
     const mine = summary.subjects.find((s) => s.subject === subject);
     return {
       subject,
-      average: m.average === null ? null : Math.round(m.average * 10) / 10,
+      average: average30 === null ? null : Math.round(average30 * 10) / 10,
       trend: m.trend === null ? null : Math.round(m.trend * 10) / 10,
       modules: mine?.modules ?? 0,
       success: mine?.success ?? null,
