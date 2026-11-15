@@ -70,7 +70,7 @@ interface Pending {
   done: string[];
 }
 
-export const DEFAULT_PREFS: PushPrefs = { notes: true, mail: true, life: true, bag: true, recap: true };
+export const DEFAULT_PREFS: PushPrefs = { notes: true, mail: true, life: true, bag: true, recap: true, support: true };
 const PREF_KEYS = Object.keys(DEFAULT_PREFS) as (keyof PushPrefs)[];
 const SCAN_EVERY = 40 * 60000;
 const DAY = 86400000;

@@ -3487,6 +3487,105 @@ button {
   font-size: 0.85rem;
   font-weight: 700;
 }
+.train-help {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    color: var(--ink);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  p {
+    margin: 0 0 10px;
+  }
+}
+.monitor {
+  display: grid;
+  gap: 10px;
+}
+.monitor-body {
+  display: grid;
+  gap: 12px;
+}
+.monitor-days {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.monitor-day {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  font-weight: 700;
+  &.is-1,
+  &.is-2 {
+    background: color-mix(in srgb, var(--accent, var(--ink)) 28%, var(--surface));
+    color: var(--ink);
+  }
+  &.is-3 {
+    background: var(--accent, var(--ink));
+    color: var(--surface);
+  }
+}
+.monitor-subjects,
+.monitor-skills {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.92rem;
+}
+.monitor-skill {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.monitor-subject {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, var(--ink)) 14%, var(--surface));
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.monitor-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.monitor-detail {
+  color: var(--ink-3);
+  font-size: 0.84rem;
+}
+.monitor-reprendre {
+  background: var(--low-bg);
+  color: var(--low);
+}
+.monitor-progres {
+  background: var(--mid-bg);
+  color: var(--mid);
+}
+.monitor-acquise {
+  background: var(--good-bg);
+  color: var(--good);
+}
 .train-run {
   display: grid;
   gap: 16px;

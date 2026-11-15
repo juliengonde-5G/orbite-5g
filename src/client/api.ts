@@ -5,7 +5,7 @@
  */
 import type { ReportKind, ReportView } from '../shared/releases.ts';
 import type { HubCreated, HubOverview } from '../shared/hub.ts';
-import type { ModuleResult, ModuleView, SupportStatus } from '../shared/support.ts';
+import type { ModuleResult, ModuleView, SupportMonitor, SupportStatus } from '../shared/support.ts';
 import type {
   AuthResult,
   BagDay,
@@ -112,6 +112,7 @@ export const api = {
     call<{ ok: true }>('POST', '/api/report', { kind, text, screen }),
   support: {
     status: (childId: string) => call<SupportStatus>('POST', '/api/support', { childId }),
+    monitor: (childId: string) => call<SupportMonitor>('POST', '/api/support/monitor', { childId }),
     enable: (childId: string, enabled: boolean) =>
       call<SupportStatus>('POST', '/api/support/enable', { childId, enabled }),
     start: (childId: string, key: string) => call<ModuleView>('POST', '/api/support/start', { childId, key }),

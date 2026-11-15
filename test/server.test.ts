@@ -936,6 +936,16 @@ test('soutien scolaire : le parent active, seul l’élève répond, chacun rest
     assert.equal(s.body.summary.modules, 1);
     assert.ok(!JSON.stringify(s.body).includes('1:12'));
     assert.equal((await app.browser().post('/api/support', { childId: '1:11' })).status, 401);
+
+    // Suivi des compétences : réservé aux parents, un seul enfant, jamais de comparaison.
+    const monitor = await parent.post('/api/support/monitor', { childId: '1:11' });
+    assert.equal(monitor.status, 200);
+    assert.equal(monitor.body.days.length, 14);
+    assert.ok(monitor.body.skills.length >= 3);
+    assert.ok(monitor.body.today.length >= 1, 'le plan fixé par l’audit apparaît');
+    assert.ok(!JSON.stringify(monitor.body).includes('1:12'));
+    assert.equal((await leo.post('/api/support/monitor', { childId: '1:11' })).status, 403);
+    assert.equal((await app.browser().post('/api/support/monitor', { childId: '1:11' })).status, 401);
   } finally {
     FakeEd.notes['1:11'] = saved!;
     await app.close();

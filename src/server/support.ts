@@ -18,6 +18,10 @@
  *   un module invalide est refusé, jamais bricolé ;
  * - tout vit dans le document chiffré `support` du coffre.
  *
+ * Audit quotidien : chaque jour, `auditDay` relit les évaluations et fixe les trois
+ * compétences du jour (`daily`) ; le plan ne bouge plus ensuite, même si ÉcoleDirecte
+ * se met à jour, ce qui évite qu'un module change sous les doigts de l'élève.
+ *
  * Points d'attention : la maîtrise « école » ne change jamais ici. Elle ne vient que
  * d'ÉcoleDirecte ; les réponses ne servent qu'à ajuster le rythme et la difficulté.
  */
@@ -28,6 +32,7 @@ import {
   levelOf,
   MAX_MODULES_PER_DAY,
   MODULE_MINUTES,
+  monitorOf,
   planDay,
   settle,
   SUBJECT_LABEL,
@@ -35,7 +40,9 @@ import {
   emptySupport,
   type Difficulty,
   type Focus,
+  type DailyPlan,
   type ModuleResult,
+  type SupportMonitor,
   type ModuleView,
   type PlanItem,
   type SupportChild,
@@ -224,11 +231,64 @@ export class Support {
     return parisDate(this.now());
   }
 
+  /** Fixe le plan du jour d'après les évaluations connues. */
+  private freeze(childId: string, child: Pick<Child, 'notes'>): DailyPlan {
+    const state = this.child(childId);
+    const today = this.today();
+    const doneToday = state.history.filter((m) => m.date === today);
+    const daily: DailyPlan = {
+      date: today,
+      audited: this.now().getTime(),
+      items: planDay(focusesOf(child, this.now()), state, today, doneToday),
+      notified: false,
+    };
+    state.daily = daily;
+    this.save();
+    return daily;
+  }
+
   private plan(childId: string, child: Pick<Child, 'notes'>): { items: PlanItem[]; done: number } {
     const state = this.child(childId);
     const today = this.today();
     const doneToday = state.history.filter((m) => m.date === today);
-    return { items: planDay(focusesOf(child, this.now()), state, today, doneToday), done: doneToday.length };
+    const daily = state.daily?.date === today ? state.daily : this.freeze(childId, child);
+    const done = new Set(doneToday.map((m) => m.key));
+    const items = daily.items.filter((p) => !done.has(p.focus.key)).slice(0, MAX_MODULES_PER_DAY - doneToday.length);
+    return { items, done: doneToday.length };
+  }
+
+  /** Élèves pour lesquels un parent a activé le soutien. */
+  enabledChildren(): string[] {
+    return Object.entries(this.doc.children)
+      .filter(([, s]) => s.enabled)
+      .map(([id]) => id);
+  }
+
+  /**
+   * Audit du jour : relit les évaluations et fixe les trois compétences. Sans effet si le
+   * soutien est désactivé ou si l'audit du jour a déjà eu lieu ; rend alors `null`.
+   */
+  auditDay(childId: string, child: Pick<Child, 'notes'>): DailyPlan | null {
+    const state = this.child(childId);
+    if (!state.enabled || state.daily?.date === this.today()) return null;
+    return this.freeze(childId, child);
+  }
+
+  /** Ce que l'audit du jour a décidé, si la notification n'est pas encore partie. */
+  pendingNotice(childId: string): DailyPlan | null {
+    const daily = this.doc.children[childId]?.daily;
+    return daily && daily.date === this.today() && !daily.notified && daily.items.length > 0 ? daily : null;
+  }
+
+  markNotified(childId: string): void {
+    const daily = this.doc.children[childId]?.daily;
+    if (!daily) return;
+    daily.notified = true;
+    this.save();
+  }
+
+  monitor(childId: string, child: Pick<Child, 'notes'>): SupportMonitor {
+    return monitorOf(child, this.child(childId), this.today(), this.now());
   }
 
   status(childId: string, child: Pick<Child, 'notes'>): SupportStatus {
@@ -251,9 +311,14 @@ export class Support {
     };
   }
 
-  setEnabled(childId: string, enabled: boolean): void {
-    this.child(childId).enabled = enabled;
+  /** Active ou désactive le soutien ; rend `true` si l'état a changé. Une activation refait l'audit du jour. */
+  setEnabled(childId: string, enabled: boolean): boolean {
+    const state = this.child(childId);
+    const changed = state.enabled !== enabled;
+    state.enabled = enabled;
+    if (changed) state.daily = null;
     this.save();
+    return changed;
   }
 
   /** Efface tout ce qui concerne un élève (sortie de la famille). */
