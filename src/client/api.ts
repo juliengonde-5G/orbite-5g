@@ -5,6 +5,7 @@
  */
 import type { ReportKind, ReportView } from '../shared/releases.ts';
 import type { HubCreated, HubOverview } from '../shared/hub.ts';
+import type { SheetView, SkillsPage } from '../shared/skills.ts';
 import type { ModuleResult, ModuleView, SupportMonitor, SupportStatus } from '../shared/support.ts';
 import type {
   AuthResult,
@@ -118,6 +119,12 @@ export const api = {
     start: (childId: string, key: string) => call<ModuleView>('POST', '/api/support/start', { childId, key }),
     answer: (childId: string, sessionId: string, answers: (number | null)[], seconds: number) =>
       call<ModuleResult>('POST', '/api/support/answer', { childId, sessionId, answers, seconds }),
+  },
+  skills: {
+    page: (childId: string) => call<SkillsPage>('POST', '/api/skills', { childId }),
+    sheet: (childId: string, key: string, refresh = false) =>
+      call<SheetView>('POST', '/api/skills/sheet', { childId, key, refresh }),
+    aids: (childId: string, aids: string[]) => call<{ aids: string[] }>('POST', '/api/skills/aids', { childId, aids }),
   },
   push: {
     status: () => call<PushStatus>('GET', '/api/push'),

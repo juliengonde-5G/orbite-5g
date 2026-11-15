@@ -17,6 +17,17 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.8.0',
+    date: '2026-11-15',
+    title: 'Compétences : une page, des fiches sur mesure',
+    notes: [
+      'Un bouton Compétences dans le menu : un anneau, puis une ligne par matière avec un carré par compétence évaluée, le niveau ÉcoleDirecte et le travail fait dans Orbite.',
+      'Pour chaque compétence du jour, une fiche écrite par Claude pour l’élève : rappel, exercice guidé, exercices à faire seul avec indices et corrigés masqués.',
+      'Les fiches s’appuient sur un recueil des programmes du collège (maths, français, anglais) et s’adaptent à la classe, aux résultats, au rythme et aux aides choisies par un parent. Elles se mettent à jour à l’usage.',
+      'Sans clé Claude, une fiche de secours tirée du programme reste disponible.',
+    ],
+  },
+  {
     version: '1.7.1',
     date: '2026-11-15',
     title: 'Un bouton Aide dans le menu',

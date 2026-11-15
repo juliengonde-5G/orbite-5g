@@ -23,6 +23,7 @@ import { helpView, newsView } from './news-view.ts';
 import { inviteView } from './invite-view.ts';
 import { setupView } from './setup-view.ts';
 import { markSupportStale, trainView } from './train-view.ts';
+import { markSkillsStale, skillsView } from './skills-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
 
@@ -42,6 +43,7 @@ const HASH: Record<Route, string> = {
   train: 'entrainement',
   news: 'nouveautes',
   help: 'aide',
+  skills: 'competences',
   setup: 'installation',
   me: 'moi',
 };
@@ -121,6 +123,7 @@ async function loadData(refresh = false): Promise<void> {
     state.dataTime = Date.now();
     state.dataError = null;
     markSupportStale();
+    markSkillsStale();
     // Les repères « nouveau » restent visibles pendant toute la visite.
     for (const k of data.fresh) state.fresh.add(k);
     const ids = data.children.map((c) => c.id);
@@ -437,6 +440,7 @@ function tabs(): [Route, string, string][] {
         ['life', 'Vie sco', 'shield'],
         ['tasks', 'Devoirs', 'tasks'],
         ['grades', 'Notes', 'grades'],
+        ['skills', 'Compétences', 'orbit'],
         ['help', 'Aide', 'help'],
       ]
     : [
@@ -444,6 +448,7 @@ function tabs(): [Route, string, string][] {
         ['bag', 'Cartable', 'bag'],
         ['tasks', 'Devoirs', 'tasks'],
         ['grades', 'Notes', 'grades'],
+        ['skills', 'Compétences', 'orbit'],
         ['messages', 'Messages', 'mail'],
         ['help', 'Aide', 'help'],
       ];
@@ -572,6 +577,8 @@ function currentView(): HTMLElement {
       return gradesView(child, actions);
     case 'life':
       return lifeView(child, actions);
+    case 'skills':
+      return skillsView(child, actions);
     case 'train':
       return me.role === 'child' ? trainView(child, actions) : studentHome(child, actions, true);
     default:

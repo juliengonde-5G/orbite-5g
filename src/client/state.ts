@@ -35,6 +35,7 @@ export type Route =
   | 'train'
   | 'news'
   | 'help'
+  | 'skills'
   | 'setup'
   | 'me';
 

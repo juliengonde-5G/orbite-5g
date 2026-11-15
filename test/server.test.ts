@@ -946,6 +946,26 @@ test('soutien scolaire : le parent active, seul l’élève répond, chacun rest
     assert.ok(!JSON.stringify(monitor.body).includes('1:12'));
     assert.equal((await leo.post('/api/support/monitor', { childId: '1:11' })).status, 403);
     assert.equal((await app.browser().post('/api/support/monitor', { childId: '1:11' })).status, 401);
+
+    // Page Compétences : vue par matière, compétences du jour et fiches (de secours sans clé).
+    const skills = await parent.post('/api/skills', { childId: '1:11' });
+    assert.equal(skills.status, 200);
+    assert.ok(skills.body.overview.subjects.length >= 1);
+    assert.equal(skills.body.todo.length, 3);
+    assert.ok(skills.body.aidOptions?.schemas, 'le parent voit les aides proposables');
+    assert.ok(!JSON.stringify(skills.body).includes('1:12'));
+    const mine = await leo.post('/api/skills', { childId: '1:11' });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.body.aidOptions, null, 'l’élève ne règle pas les aides');
+    const sheet = await leo.post('/api/skills/sheet', { childId: '1:11', key: skills.body.todo[0].key });
+    assert.equal(sheet.status, 200);
+    assert.ok(sheet.body.content.autonomes.length >= 2);
+    assert.ok(!('profile' in sheet.body) && !('fingerprint' in sheet.body));
+    assert.equal((await leo.post('/api/skills/sheet', { childId: '1:11', key: 'c:maths:NOPE' })).status, 404);
+    assert.equal((await leo.post('/api/skills/aids', { childId: '1:11', aids: ['schemas'] })).status, 403);
+    const aids = await parent.post('/api/skills/aids', { childId: '1:11', aids: ['schemas', 'x'] });
+    assert.deepEqual(aids.body.aids, ['schemas']);
+    assert.equal((await app.browser().post('/api/skills', { childId: '1:11' })).status, 401);
   } finally {
     FakeEd.notes['1:11'] = saved!;
     await app.close();

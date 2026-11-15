@@ -96,6 +96,7 @@ const ICONS: Record<string, string> = {
   flag: 'M5 21V4m0 0h11l-2 4 2 4H5',
   absent: 'M5 6h14v14H5zM5 10h14M9 4v4m6-4v4m-5 6 4 4m0-4-4 4',
   file: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  orbit: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 6a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z',
   help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5M12 17h.01',
   open: 'M14 4h6v6M20 4l-9 9M18 14v5H5V6h5',
 };
