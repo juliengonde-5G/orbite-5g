@@ -19,7 +19,7 @@ import { lifeView } from './life-view.ts';
 import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
 import { docsView } from './docs-view.ts';
-import { newsView } from './news-view.ts';
+import { helpView, newsView } from './news-view.ts';
 import { inviteView } from './invite-view.ts';
 import { setupView } from './setup-view.ts';
 import { markSupportStale, trainView } from './train-view.ts';
@@ -41,6 +41,7 @@ const HASH: Record<Route, string> = {
   docs: 'documents',
   train: 'entrainement',
   news: 'nouveautes',
+  help: 'aide',
   setup: 'installation',
   me: 'moi',
 };
@@ -436,6 +437,7 @@ function tabs(): [Route, string, string][] {
         ['life', 'Vie sco', 'shield'],
         ['tasks', 'Devoirs', 'tasks'],
         ['grades', 'Notes', 'grades'],
+        ['help', 'Aide', 'help'],
       ]
     : [
         ['home', 'Accueil', 'home'],
@@ -443,6 +445,7 @@ function tabs(): [Route, string, string][] {
         ['tasks', 'Devoirs', 'tasks'],
         ['grades', 'Notes', 'grades'],
         ['messages', 'Messages', 'mail'],
+        ['help', 'Aide', 'help'],
       ];
 }
 
@@ -450,6 +453,7 @@ function currentTab(): Route {
   const r = state.route;
   if (r === 'child' || r === 'train') return 'home';
   if (r === 'message') return 'messages';
+  if (r === 'news') return 'help';
   if (r === 'progress') return 'grades';
   if (r === 'life' && state.session?.me?.role !== 'parent') return 'home';
   if (r === 'bag' && state.session?.me?.role === 'parent') return 'home';
@@ -468,8 +472,8 @@ function updateTabBar(shell: HTMLElement): void {
   if (!bar || bar.dataset.tabs !== signature) {
     bar?.remove();
     bar = h(
-      'nav.tabbar',
-      { 'aria-label': 'Navigation principale', dataset: { tabs: signature } },
+      `nav.tabbar${list.length > 5 ? '.is-dense' : ''}`,
+      { 'aria-label': 'Navigation principale', dataset: { tabs: signature }, style: `--n:${list.length}` },
       h('span.tab-blob', { 'aria-hidden': 'true' }),
       list.map(([route, label, ico]) =>
         h(
@@ -523,6 +527,7 @@ function currentView(): HTMLElement {
   if (!me) return h('div');
   if (state.route === 'me') return meView(settingsActions());
   if (state.route === 'setup' && me.admin) return setupView(settingsActions());
+  if (state.route === 'help') return helpView({ go: (route) => actions.go(route), rerender: render, toast });
   if (state.route === 'news') return newsView({ go: (route) => actions.go(route), rerender: render, toast });
   if (!state.data) {
     if (state.dataError) return waiting(state.dataError);
@@ -605,6 +610,7 @@ function render(): void {
     const own =
       state.route === 'me' ||
       state.route === 'news' ||
+      state.route === 'help' ||
       state.route === 'setup' ||
       state.route === 'home' ||
       state.route === 'recap' ||

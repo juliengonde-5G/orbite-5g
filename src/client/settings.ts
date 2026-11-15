@@ -8,7 +8,6 @@ import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
 import { sky } from './views.ts';
 import { notificationsCard } from './push-view.ts';
-import { helpCard, reportsBlock } from './news-view.ts';
 import { hubBlock } from './hub-view.ts';
 import type { AuthResult, ClaudeKeyStatus, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
@@ -843,8 +842,6 @@ export function meView(actions: SettingsActions): HTMLElement {
     me.role === 'parent' && competenceBlock(),
     me.role === 'parent' && me.admin && familyBlock(actions),
     me.role === 'parent' && me.admin && state.session?.hub === true && hubBlock(actions),
-    me.role === 'parent' && me.admin && reportsBlock(actions),
-    helpCard(actions),
     installHint(),
     h(
       'section.block',

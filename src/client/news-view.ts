@@ -83,7 +83,7 @@ export function newsView(actions: NewsActions): HTMLElement {
   if (current) markSeen(current);
   return h(
     'div.screen.narrow.news',
-    sky({ title: 'Nouveautés', subtitle: current ? `Orbite ${current}` : null, back: () => actions.go('me') }),
+    sky({ title: 'Nouveautés', subtitle: current ? `Orbite ${current}` : null, back: () => actions.go('help') }),
     h(
       'div.flow',
       RELEASES.map((r, i) =>
@@ -247,20 +247,30 @@ export function reportsBlock(actions: NewsActions): HTMLElement {
   );
 }
 
-/** Bloc de l'écran Moi : les nouveautés et le signalement. */
-export function helpCard(actions: NewsActions): HTMLElement {
-  return h(
-    'section.block',
-    h('header.section-head', h('h2', 'Aide')),
+/** Écran Aide : nouveautés, signalement et, pour le parent administrateur, les signalements reçus. */
+export function helpView(actions: NewsActions): HTMLElement {
+  const me = state.session?.me;
+  const row = (ico: string, title: string, text: string, onclick: () => void) =>
     h(
-      'div.row-actions',
-      h('button.button', { type: 'button', onclick: () => actions.go('news') }, icon('star', 18), 'Nouveautés'),
+      'button.help-row',
+      { type: 'button', onclick },
+      h('span.help-icon', icon(ico, 22)),
+      h('span.help-text', h('b', title), h('small', text)),
+      icon('next', 18),
+    );
+  return h(
+    'div.screen.narrow',
+    sky({ title: 'Aide', subtitle: state.session?.version ? `Orbite ${state.session.version}` : null }),
+    h(
+      'div.flow',
       h(
-        'button.button',
-        { type: 'button', onclick: () => reportSheet(actions) },
-        icon('flag', 18),
-        'Signaler un problème',
+        'section.block',
+        row('star', 'Nouveautés', 'Ce qui a changé dans chaque version.', () => actions.go('news')),
+        row('flag', 'Signaler un problème', 'Un souci, une idée : le parent administrateur reçoit ton message.', () =>
+          reportSheet(actions),
+        ),
       ),
+      me?.role === 'parent' && me.admin && reportsBlock(actions),
     ),
   );
 }
