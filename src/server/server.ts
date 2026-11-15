@@ -937,12 +937,12 @@ export function createApp(options: AppOptions): http.Server {
         const admins = family.members.filter((m) => m.admin);
         // Prévenir l'administrateur est un plus : un échec d'envoi ne doit pas perdre le signalement.
         await notifier
-          .notify(
+          .queue(
             admins,
             { title: 'Orbite', body: `Nouveau signalement de ${me.name}.`, url: '/#moi', tag: 'report' },
             null,
           )
-          .catch(() => 0);
+          .catch(() => undefined);
         return { ok: true };
       },
     ],
