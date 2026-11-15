@@ -230,6 +230,13 @@ export class Notifier {
     await this.flush();
   }
 
+  /** Message à des membres précis, hors heures calmes : mis en file, retenté en cas de panne du service push. */
+  async queue(members: MemberRecord[], message: PushMessage, pref: keyof PushPrefs | null): Promise<void> {
+    this.enqueue(members, message, pref);
+    this.save();
+    await this.flush();
+  }
+
   private enqueue(members: MemberRecord[], message: PushMessage, pref: keyof PushPrefs | null): void {
     if (!members.length) return;
     this.doc.outbox ??= [];

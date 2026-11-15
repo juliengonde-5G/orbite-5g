@@ -212,19 +212,21 @@ function reportRow(item: ReportView, actions: NewsActions): HTMLElement {
 /** Signalements reçus (parent administrateur), relus à chaque ouverture de l'écran Moi. */
 export function reportsBlock(actions: NewsActions): HTMLElement {
   const r = state.reports;
-  if (!r.loading && !r.error && !r.value) {
+  // Relue à chaque ouverture de l'écran (au plus toutes les 30 s), y compris après une erreur.
+  if (!r.loading && Date.now() - (r.time ?? 0) > 30000) {
     r.loading = true;
     api.admin
       .reports()
       .then((list) => {
         r.value = list;
-        r.time = Date.now();
+        r.error = null;
       })
       .catch((e) => {
         r.error = e instanceof ApiError ? e.message : 'Signalements indisponibles.';
       })
       .finally(() => {
         r.loading = false;
+        r.time = Date.now();
         actions.rerender();
       });
   }
