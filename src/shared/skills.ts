@@ -166,6 +166,8 @@ export interface LearnerProfile {
   /** Secondes par question, par tranche de 5 ; `null` si inconnu. */
   pace: number | null;
   aids: string[];
+  /** `adapte` : fiche à écrire pour une lecture facilitée (règles de présentation, jamais de diagnostic). */
+  reading: 'standard' | 'adapte';
 }
 
 export function profileOf(
@@ -204,6 +206,7 @@ export function profileOf(
     modules: state?.seen ?? 0,
     pace,
     aids: (support.aids ?? []).filter((a) => a in AIDS).sort(),
+    reading: support.dys === true ? 'adapte' : 'standard',
   };
 }
 
@@ -236,6 +239,8 @@ export interface SheetView {
   via: 'claude' | 'secours';
   domain: string;
   reference: string;
+  /** Fiche écrite et présentée pour une lecture facilitée. */
+  adapted?: boolean;
   content: SheetContent;
 }
 

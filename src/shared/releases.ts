@@ -17,6 +17,17 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.9.0',
+    date: '2026-11-15',
+    title: 'Fiches adaptées à la dyslexie',
+    notes: [
+      'Un parent active « Adaptation dyslexie » dans la fiche de l’enfant (Réglages, Profils). Le réglage est enregistré dans l’espace chiffré de la famille.',
+      'Les fiches de soutien sont alors écrites en phrases courtes, une idée par ligne, étapes numérotées, mots difficiles découpés en syllabes, prononciation en anglais. La police lisible est aussi activée sur son profil.',
+      'À l’écran : texte plus espacé et aligné à gauche, et un bouton Écouter qui lit le rappel et les consignes avec la voix de l’appareil.',
+      'Claude reçoit seulement des règles de présentation, jamais le mot dyslexie ni un diagnostic. Sans clé Claude, la fiche de secours est mise en phrases courtes de la même façon.',
+    ],
+  },
+  {
     version: '1.8.1',
     date: '2026-11-15',
     title: 'Moyennes et tendances plus lisibles',

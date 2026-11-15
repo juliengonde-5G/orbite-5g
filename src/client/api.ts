@@ -125,6 +125,8 @@ export const api = {
     sheet: (childId: string, key: string, refresh = false) =>
       call<SheetView>('POST', '/api/skills/sheet', { childId, key, refresh }),
     aids: (childId: string, aids: string[]) => call<{ aids: string[] }>('POST', '/api/skills/aids', { childId, aids }),
+    adapt: (childId: string, dys?: boolean) =>
+      call<{ dys: boolean }>('POST', '/api/skills/adapt', dys === undefined ? { childId } : { childId, dys }),
   },
   push: {
     status: () => call<PushStatus>('GET', '/api/push'),

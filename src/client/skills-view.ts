@@ -298,11 +298,41 @@ const REASON = {
   review: 'Révision pour garder le niveau',
 } as const;
 
-function exerciseBlock(title: string, x: { consigne: string; indice: string; corrige: string }): HTMLElement {
+/** Lecture à voix haute par l'appareil (voix du système, aucune donnée envoyée). */
+const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+function listenButton(text: string, lang: string): HTMLElement | null {
+  if (!canSpeak) return null;
+  return h(
+    'button.button.button-small.listen',
+    {
+      type: 'button',
+      onclick: () => {
+        const synth = window.speechSynthesis;
+        const wasSpeaking = synth.speaking;
+        synth.cancel();
+        if (wasSpeaking) return;
+        const say = new SpeechSynthesisUtterance(text);
+        say.lang = lang;
+        say.rate = 0.9;
+        synth.speak(say);
+      },
+    },
+    icon('speaker', 16),
+    'Écouter',
+  );
+}
+
+function exerciseBlock(
+  title: string,
+  x: { consigne: string; indice: string; corrige: string },
+  easy: { lang: string } | null,
+): HTMLElement {
   return h(
     'div.sheet-exercise',
     h('b', title),
     h('p', x.consigne),
+    easy && listenButton(x.consigne, easy.lang),
     h('details', h('summary', 'Un indice'), h('p', x.indice)),
     h('details', h('summary', 'Voir la correction'), h('p', x.corrige)),
   );
@@ -311,19 +341,23 @@ function exerciseBlock(title: string, x: { consigne: string; indice: string; cor
 function sheetBody(child: Child, item: TodoItem, sheet: SheetView, actions: Actions): HTMLElement {
   const c = sheet.content;
   const parent = state.session?.me?.role === 'parent';
+  // Fiche adaptée à la lecture : police et espacement de la fiche, lecture à voix haute.
+  const easy = sheet.adapted === true ? { lang: sheet.subject === 'anglais' ? 'en-GB' : 'fr-FR' } : null;
   return h(
-    'div.sheet',
+    `div.sheet${easy ? '.sheet-easy' : ''}`,
+    easy && h('p.sheet-easy-note', 'Fiche en lecture facilitée : phrases courtes, étapes séparées, bouton Écouter.'),
     h('p.sheet-goal', c.objectif),
     h(
       'div.sheet-part',
       h('b', 'À retenir'),
+      easy && listenButton(c.rappel.join(' '), 'fr-FR'),
       h(
         'ul',
         c.rappel.map((r) => h('li', r)),
       ),
     ),
-    exerciseBlock('Exercice guidé', c.guide),
-    c.autonomes.map((x, i) => exerciseBlock(`À toi ${c.autonomes.length > 1 ? i + 1 : ''}`.trim(), x)),
+    exerciseBlock('Exercice guidé', c.guide, easy),
+    c.autonomes.map((x, i) => exerciseBlock(`À toi ${c.autonomes.length > 1 ? i + 1 : ''}`.trim(), x, easy)),
     h(
       'div.sheet-part',
       h('b', 'Astuces'),

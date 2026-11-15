@@ -2,6 +2,7 @@
  * Onglet « Moi » : préférences personnelles et, pour le parent administrateur,
  * la connexion ÉcoleDirecte et la gestion des profils de la famille.
  */
+import { markSkillsStale } from './skills-view.ts';
 import { api, ApiError, BASE } from './api.ts';
 import { clear, h, icon, tap } from './dom.ts';
 import { initial, sinceText } from './format.ts';
@@ -439,6 +440,54 @@ function envNote(s: ClaudeKeyStatus | null): string {
 
 /* ---------- Profils de la famille ---------- */
 
+/**
+ * Adaptation à la lecture (dyslexie), réglée par un parent sur la fiche de l'enfant : fiches de soutien
+ * en phrases courtes avec lecture à voix haute, et police lisible sur son profil. Le réglage reste dans
+ * l'espace chiffré de la famille ; Claude ne reçoit que des règles de présentation, jamais le mot.
+ */
+function readingSection(m: MemberView, actions: SettingsActions): HTMLElement {
+  const detail = h('small', 'Chargement…');
+  const box = h('input', { type: 'checkbox', disabled: true }) as HTMLInputElement;
+  const studentId = m.studentId;
+  const ready = () => {
+    detail.textContent =
+      'Les fiches de soutien sont écrites en phrases courtes, étapes séparées, mots difficiles découpés en syllabes, avec un bouton Écouter. La police lisible est activée sur son profil.';
+    box.disabled = false;
+  };
+  if (!studentId) detail.textContent = 'Rattache d’abord l’élève ÉcoleDirecte pour régler ce profil.';
+  else
+    void api.skills
+      .adapt(studentId)
+      .then(({ dys }) => {
+        box.checked = dys;
+        ready();
+      })
+      .catch(() => {
+        detail.textContent = 'Réglage indisponible pour le moment.';
+      });
+  box.addEventListener('change', async () => {
+    const on = box.checked;
+    box.disabled = true;
+    try {
+      await api.skills.adapt(studentId ?? '', on);
+      if (on || m.prefs.reading === 'dyslexia')
+        Object.assign(m, await api.admin.update(m.id, { reading: on ? 'dyslexia' : 'standard' }));
+      markSkillsStale();
+      actions.toast(on ? `Fiches adaptées pour ${m.name}.` : 'Adaptation désactivée.');
+    } catch (err) {
+      box.checked = !on;
+      actions.toast(err instanceof ApiError ? err.message : 'Modification impossible.');
+    } finally {
+      box.disabled = false;
+    }
+  });
+  return h(
+    'section.sheet-section',
+    h('h3', 'Adaptation dyslexie'),
+    h('label.toggle', box, h('span', h('b', 'Lecture facilitée'), detail)),
+  );
+}
+
 export function memberSheet(m: MemberView, actions: SettingsActions, refresh: () => void): void {
   sheet(m.name, (close) => {
     const body = h('div.sheet-body');
@@ -523,7 +572,9 @@ export function memberSheet(m: MemberView, actions: SettingsActions, refresh: ()
                       'aria-label': 'Élève rattaché',
                       onchange: async (e: Event) => {
                         const v = (e.target as HTMLSelectElement).value;
-                        await api.admin.update(m.id, { studentId: v || null });
+                        // Le profil mis à jour redessine la fiche : le réglage de lecture suit le nouvel élève.
+                        Object.assign(m, await api.admin.update(m.id, { studentId: v || null }));
+                        draw();
                         actions.toast('Rattachement enregistré.');
                         refresh();
                         actions.reloadData();
@@ -537,6 +588,7 @@ export function memberSheet(m: MemberView, actions: SettingsActions, refresh: ()
                 )
               : h('p.hint', 'Connecte d’abord ÉcoleDirecte pour rattacher l’élève.'),
           ),
+        m.role === 'child' && readingSection(m, actions),
         h(
           'section.sheet-section',
           colorPicker(m.color, (color) => {

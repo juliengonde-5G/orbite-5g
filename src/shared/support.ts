@@ -89,6 +89,8 @@ export interface SupportChild {
   daily: DailyPlan | null;
   /** Aides choisies par un parent pour adapter les fiches (identifiants de `AIDS`). */
   aids?: string[];
+  /** Adaptation à la lecture (dyslexie), réglée par un parent : fiches en phrases courtes. Jamais envoyée à Claude. */
+  dys?: boolean;
 }
 
 /** Résultat de l'audit quotidien d'un élève. */
@@ -101,7 +103,14 @@ export interface DailyPlan {
   notified: boolean;
 }
 
-export const emptySupport = (): SupportChild => ({ enabled: false, focuses: {}, history: [], daily: null, aids: [] });
+export const emptySupport = (): SupportChild => ({
+  enabled: false,
+  focuses: {},
+  history: [],
+  daily: null,
+  aids: [],
+  dys: false,
+});
 
 /** Ce qui aide un élève à apprendre, choisi par un parent : il oriente la rédaction des fiches. */
 export const AIDS: Record<string, string> = {

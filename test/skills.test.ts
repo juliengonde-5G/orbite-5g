@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CURRICULUM, curriculumFor } from '../src/shared/curriculum.ts';
 import { overviewOf, profileOf } from '../src/shared/skills.ts';
+import { easyContent, readingRules, shortSentences } from '../src/shared/reading.ts';
 import { emptySupport, focusesOf } from '../src/shared/support.ts';
 import { parseSheet, Sheets, sheetView, type SheetRequest, type SheetWriter } from '../src/server/sheets.ts';
 import { Support, type ExerciseWriter } from '../src/server/support.ts';
@@ -280,4 +281,50 @@ test('la moyenne du profil ne compte que les 30 derniers jours', () => {
   };
   const focus = focusesOf(mixed, NOW).find((f) => f.key === 's:maths')!;
   assert.equal(profileOf(mixed, emptySupport(), focus, NOW).average, 18);
+});
+
+test('une phrase longue est coupée à la virgule la plus proche du milieu, sans casser une citation', () => {
+  assert.deepEqual(shortSentences('Je compare les fractions.'), ['Je compare les fractions.']);
+  const out = shortSentences(
+    'On met les deux fractions au même dénominateur, puis on compare les numérateurs des deux fractions obtenues.',
+  );
+  assert.equal(out.length, 2);
+  assert.ok(out.every((s) => s.split(' ').length <= 14));
+  assert.ok(/^[A-ZÉ]/.test(out[1]!), 'la deuxième phrase commence par une majuscule');
+  const quoted = shortSentences(
+    'Voici une erreur fréquente : « il oublie, souvent, de réduire ses fractions avant de comparer ».',
+  );
+  assert.equal(quoted.join(' ').includes('« il oublie, souvent'), true, 'une citation reste entière');
+});
+
+test('la fiche de secours adaptée à la lecture a des éléments courts et un élément par idée', async () => {
+  const { sheets, support } = setup(async () => GOOD, false);
+  const normal = await sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:F1');
+  support.setDys('1:11', true);
+  assert.equal(support.dys('1:11'), true);
+  const easy = await sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:F1');
+  assert.equal(easy.adapted, true, 'la fiche est tout de suite réécrite quand le réglage change');
+  assert.equal(normal.adapted, undefined);
+  assert.ok(easy.content.rappel.length >= normal.content.rappel.length);
+  for (const line of easy.content.rappel)
+    assert.ok(line.split(' ').filter((w) => /[\p{L}\p{N}]/u.test(w)).length <= 15, line);
+  assert.ok(easy.content.astuces.length <= 2);
+  assert.deepEqual(easyContent(easy.content).rappel, easy.content.rappel.flatMap(shortSentences).slice(0, 5));
+});
+
+test('Claude reçoit des règles de présentation, jamais le mot dyslexie', async () => {
+  const { sheets, requests, support } = setup(async () => GOOD);
+  support.setDys('1:11', true);
+  const sheet = await sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:F1');
+  assert.equal(sheet.adapted, true);
+  assert.equal(requests[0]!.profile.reading, 'adapte');
+  assert.ok(readingRules('anglais').some((r) => r.includes('prononciation')));
+  assert.ok(readingRules('maths').some((r) => r.includes('une opération par ligne')));
+  assert.ok(!JSON.stringify(readingRules('francais')).toLowerCase().includes('dysl'));
+  // Le profil stocké et la vue envoyée au navigateur ne contiennent aucun nom de trouble.
+  assert.ok(!JSON.stringify(sheetView(sheet)).toLowerCase().includes('dysl'));
+  support.setDys('1:11', false);
+  const back = await sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:F1');
+  assert.equal(back.adapted, undefined);
+  assert.equal(requests.length, 2, 'couper le réglage réécrit aussi la fiche');
 });

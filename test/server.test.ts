@@ -966,6 +966,17 @@ test('soutien scolaire : le parent active, seul l’élève répond, chacun rest
     const aids = await parent.post('/api/skills/aids', { childId: '1:11', aids: ['schemas', 'x'] });
     assert.deepEqual(aids.body.aids, ['schemas']);
     assert.equal((await app.browser().post('/api/skills', { childId: '1:11' })).status, 401);
+
+    // Adaptation à la lecture : réglée par un parent, jamais par l'élève ; la fiche suivante en porte la marque.
+    assert.equal((await leo.post('/api/skills/adapt', { childId: '1:11', dys: true })).status, 403);
+    assert.equal((await leo.post('/api/skills/adapt', { childId: '1:11' })).status, 403);
+    assert.deepEqual((await parent.post('/api/skills/adapt', { childId: '1:11' })).body, { dys: false });
+    assert.equal((await parent.post('/api/skills/adapt', { childId: '1:11', dys: 'oui' })).status, 400);
+    assert.deepEqual((await parent.post('/api/skills/adapt', { childId: '1:11', dys: true })).body, { dys: true });
+    const easy = await leo.post('/api/skills/sheet', { childId: '1:11', key: skills.body.todo[0].key });
+    assert.equal(easy.body.adapted, true);
+    assert.ok(!JSON.stringify(easy.body).toLowerCase().includes('dys'), 'aucun diagnostic dans la fiche');
+    assert.deepEqual((await parent.post('/api/skills/adapt', { childId: '1:11', dys: false })).body, { dys: false });
   } finally {
     FakeEd.notes['1:11'] = saved!;
     await app.close();

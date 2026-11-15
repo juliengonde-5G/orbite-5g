@@ -99,6 +99,7 @@ const ICONS: Record<string, string> = {
   orbit: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 6a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z',
   help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5M12 17h.01',
   open: 'M14 4h6v6M20 4l-9 9M18 14v5H5V6h5',
+  speaker: 'M4 9.5v5h4l5 4v-13l-5 4Zm12 .5a4 4 0 0 1 0 4m2.5-6.5a7.5 7.5 0 0 1 0 9',
 };
 
 export function icon(name: keyof typeof ICONS | string, size = 22): SVGElement {
