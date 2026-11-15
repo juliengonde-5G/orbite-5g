@@ -416,7 +416,12 @@ export function monitorOf(
     const success = worked && worked.total > 0 ? worked.right / worked.total : null;
     const consolidated = !!worked && worked.seen >= 3 && success !== null && success >= 0.8;
     const status: SkillMonitor['status'] =
-      focus.mastery >= 0.67 ? 'acquise' : focus.mastery < 0.5 && !consolidated ? 'reprendre' : 'progres';
+      // Niveau 3 (« satisfaisante ») = 2/3 : on arrondit avant de comparer pour qu'il compte comme acquis.
+      Math.round(focus.mastery * 1000) / 1000 >= 0.667
+        ? 'acquise'
+        : focus.mastery < 0.5 && !consolidated
+          ? 'reprendre'
+          : 'progres';
     return {
       key: focus.key,
       subject: focus.subject,

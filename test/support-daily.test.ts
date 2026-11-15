@@ -306,3 +306,16 @@ test('suivi : une moyenne absente reste absente, et celle des 30 jours ignore le
   );
   assert.equal(old.skills.find((s) => s.key === 's:maths')?.average, 18);
 });
+
+test('suivi : le niveau 3 d’ÉcoleDirecte (satisfaisante) compte comme acquis', () => {
+  const monitor = monitorOf(
+    {
+      notes: [note('MATHS', '2026-11-05', 14, [skill('Niveau trois', 3, 'L3'), skill('Niveau deux', 2, 'L2')])],
+    },
+    emptySupport(),
+    '2026-11-12',
+    NOW,
+  );
+  assert.equal(monitor.skills.find((s) => s.key === 'c:maths:L3')?.status, 'acquise');
+  assert.notEqual(monitor.skills.find((s) => s.key === 'c:maths:L2')?.status, 'acquise');
+});
