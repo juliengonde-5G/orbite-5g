@@ -227,3 +227,35 @@ test('une compétence inconnue ou une clé invalide est refusée', async () => {
   await assert.rejects(sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:NOPE'), /plus suivie/);
   await assert.rejects(sheets.sheet('1:11', child, support.state('1:11'), 42), /inconnue/);
 });
+
+test('des fiches demandées en même temps sont toutes enregistrées', async () => {
+  const { sheets, support } = setup(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return GOOD;
+  });
+  const keys = ['s:maths', 's:francais', 's:anglais'];
+  await Promise.all(keys.map((k) => sheets.sheet('1:11', child, support.state('1:11'), k)));
+  assert.deepEqual(
+    sheets
+      .existing('1:11')
+      .map((s) => s.key)
+      .sort(),
+    keys.slice().sort(),
+  );
+});
+
+test('le budget du jour est réservé avant d’attendre Claude', async () => {
+  const { sheets, support, requests, clock } = setup(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return GOOD;
+  });
+  for (let i = 0; i < 11; i++) {
+    clock.value = new Date(NOW.getTime() + i * 11 * 60000);
+    await sheets.sheet('1:11', child, support.state('1:11'), 'c:maths:F1', true);
+  }
+  assert.equal(requests.length, 11);
+  await Promise.all(
+    ['s:maths', 's:francais', 's:anglais'].map((k) => sheets.sheet('1:11', child, support.state('1:11'), k)),
+  );
+  assert.equal(requests.length, 12, 'une seule demande de plus : le plafond est de 12');
+});

@@ -279,11 +279,9 @@ export class Sheets {
     const entry = curriculumFor(focus.subject, focus.label);
     const fingerprint = this.fingerprint(entry, focus.label, profile);
     const now = this.now().getTime();
-    const mine = this.doc.children[childId] ?? {};
-    this.doc.children[childId] = mine;
-    const known = mine[key];
+    const known = this.doc.children[childId]?.[key];
     const today = parisDate(this.now());
-    const spent = this.doc.spent[childId]?.date === today ? this.doc.spent[childId]!.count : 0;
+    const spent = this.spentToday(childId, today);
     const stale =
       !known ||
       known.date !== today ||
@@ -299,11 +297,14 @@ export class Sheets {
     const task = (async (): Promise<Sheet> => {
       let via: Sheet['via'] = 'secours';
       let content: SheetContent;
-      if (this.writer.available && spent < DAILY_BUDGET) {
+      // Le budget est réservé avant d'attendre Claude : des demandes simultanées le voient entamé.
+      if (this.writer.available && this.spentToday(childId, today) < DAILY_BUDGET) {
+        this.spend(childId, today, 1);
         try {
           content = await this.writer.write(request);
           via = 'claude';
         } catch {
+          this.spend(childId, today, -1);
           content = fallbackSheet(request);
         }
       } else content = fallbackSheet(request);
@@ -321,12 +322,10 @@ export class Sheets {
         profile,
         content,
       };
+      // Le dossier de l'élève est relu ici : une autre fiche a pu être enregistrée pendant l'attente.
+      const mine = this.doc.children[childId] ?? {};
+      this.doc.children[childId] = mine;
       mine[key] = sheet;
-      if (via === 'claude')
-        this.doc.spent[childId] = {
-          date: today,
-          count: (this.doc.spent[childId]?.date === today ? this.doc.spent[childId]!.count : 0) + 1,
-        };
       this.prune(childId, today);
       this.save();
       return sheet;
@@ -335,14 +334,27 @@ export class Sheets {
     return task;
   }
 
+  private spentToday(childId: string, today: string): number {
+    const row = this.doc.spent[childId];
+    return row?.date === today ? row.count : 0;
+  }
+
+  private spend(childId: string, today: string, by: number): void {
+    this.doc.spent[childId] = { date: today, count: Math.max(0, this.spentToday(childId, today) + by) };
+  }
+
+  /** Garde les fiches récentes, en modifiant le dossier en place (les rédactions en cours y écrivent aussi). */
   private prune(childId: string, today: string): void {
     const mine = this.doc.children[childId];
     if (!mine) return;
     const oldest = new Date(`${today}T12:00:00Z`).getTime() - KEEP_DAYS * 86400000;
-    const rows = Object.entries(mine)
-      .filter(([, s]) => s.generated >= oldest)
-      .sort((a, b) => b[1].generated - a[1].generated)
-      .slice(0, MAX_PER_CHILD);
-    this.doc.children[childId] = Object.fromEntries(rows);
+    const keep = new Set(
+      Object.entries(mine)
+        .filter(([, sheet]) => sheet.generated >= oldest)
+        .sort((a, b) => b[1].generated - a[1].generated)
+        .slice(0, MAX_PER_CHILD)
+        .map(([key]) => key),
+    );
+    for (const key of Object.keys(mine)) if (!keep.has(key)) delete mine[key];
   }
 }

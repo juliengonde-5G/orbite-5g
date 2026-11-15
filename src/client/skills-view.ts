@@ -45,6 +45,7 @@ const pretty = (subject: SubjectOverview): string =>
 /** À appeler quand les données de l'application sont rechargées. */
 export function markSkillsStale(): void {
   for (const entry of pages.values()) entry.time = 0;
+  for (const entry of sheets.values()) entry.time = 0;
 }
 
 function pageOf(child: Child, actions: Actions): SkillsPage | null {
@@ -88,6 +89,7 @@ function loadSheet(child: Child, key: string, actions: Actions, refresh = false)
     })
     .finally(() => {
       entry.loading = false;
+      entry.time = Date.now();
       actions.rerender();
     });
 }
@@ -357,7 +359,9 @@ function todoCard(child: Child, item: TodoItem, actions: Actions): HTMLElement {
   const id = `${child.id}|${item.key}`;
   const isOpen = openSheets.has(id);
   const entry = sheets.get(id);
-  if (isOpen && !entry) loadSheet(child, item.key, actions);
+  // Une fiche ouverte est relue quand elle vieillit ou change de jour : le serveur décide de la réécrire.
+  if (isOpen && (!entry || (!entry.loading && !entry.error && isStale(entry.time))))
+    loadSheet(child, item.key, actions);
   const e = sheets.get(id);
   return h(
     `section.card.todo${isOpen ? '.is-open' : ''}${item.done ? '.is-done' : ''}`,
