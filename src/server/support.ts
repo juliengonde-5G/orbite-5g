@@ -27,6 +27,7 @@
  */
 import { randomInt, randomUUID } from 'node:crypto';
 import {
+  AIDS,
   focusesOf,
   ITEMS_PER_MODULE,
   levelOf,
@@ -285,6 +286,35 @@ export class Support {
     if (!daily) return;
     daily.notified = true;
     this.save();
+  }
+
+  /** État d'un élève (lecture) : sert à la page Compétences et aux fiches. */
+  state(childId: string): SupportChild {
+    return this.child(childId);
+  }
+
+  /** Aides choisies par un parent pour adapter les fiches ; les identifiants inconnus sont ignorés. */
+  setAids(childId: string, aids: unknown): string[] {
+    const known = Array.isArray(aids)
+      ? [...new Set(aids.filter((a): a is string => typeof a === 'string' && a in AIDS))].sort()
+      : [];
+    this.child(childId).aids = known;
+    this.save();
+    return known;
+  }
+
+  /**
+   * Les compétences du jour. Soutien activé : le plan fixé par l'audit ; sinon, ce que l'audit
+   * choisirait aujourd'hui, sans rien fixer ni enregistrer.
+   */
+  todo(childId: string, child: Pick<Child, 'notes'>): { focus: Focus; reason: PlanItem['reason']; done: boolean }[] {
+    const state = this.child(childId);
+    const today = this.today();
+    const done = new Set(state.history.filter((m) => m.date === today).map((m) => m.key));
+    const items = state.enabled
+      ? (state.daily?.date === today ? state.daily : this.freeze(childId, child)).items
+      : planDay(focusesOf(child, this.now()), state, today);
+    return items.map((p) => ({ focus: p.focus, reason: p.reason, done: done.has(p.focus.key) }));
   }
 
   monitor(childId: string, child: Pick<Child, 'notes'>): SupportMonitor {

@@ -36,6 +36,9 @@ import { Hub, HubError } from './hub.ts';
 import { createHubServer } from './hub-server.ts';
 import { ReportError, Reports } from './reports.ts';
 import { ClaudeExerciseWriter, Support, SupportError } from './support.ts';
+import { ClaudeSheetWriter, SheetError, Sheets, sheetView } from './sheets.ts';
+import { overviewOf } from '../shared/skills.ts';
+import { AIDS } from '../shared/support.ts';
 import { announceActivation, runDailyAudit } from './support-daily.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
@@ -170,6 +173,8 @@ export interface AppOptions {
   notifier?: Notifier;
   /** Soutien scolaire imposé (tests). */
   support?: Support;
+  /** Fiches de travail imposées (tests). */
+  sheets?: Sheets;
   reports?: Reports;
   /** Chemin de cette famille (`/f/dupont-k7x2`) ; vide pour la famille « maison ». */
   basePath?: string;
@@ -335,6 +340,7 @@ export function createApp(options: AppOptions): http.Server {
   })();
   const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject, base });
   const support = options.support ?? new Support(vault, new ClaudeExerciseWriter(coach));
+  const sheets = options.sheets ?? new Sheets(vault, new ClaudeSheetWriter(coach));
   const reports = options.reports ?? new Reports(vault);
   const pushTimer = options.background ? notifier.start() : undefined;
   // Audit quotidien du soutien : toutes les cinq minutes, sans effet une fois la journée faite.
@@ -445,6 +451,15 @@ export function createApp(options: AppOptions): http.Server {
       return run();
     } catch (e) {
       if (e instanceof ReportError) throw new HttpError(e.message, e.code);
+      throw e;
+    }
+  };
+
+  const sheetCall = async <T>(run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (e) {
+      if (e instanceof SheetError) throw new HttpError(e.message, e.code);
       throw e;
     }
   };
@@ -1088,6 +1103,49 @@ export function createApp(options: AppOptions): http.Server {
         requireParent(ctx);
         const childId = await canSee(requireMember(ctx), ctx.data.childId);
         return support.monitor(childId, await supportChild(childId));
+      },
+    ],
+    [
+      'POST /api/skills',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        const child = await supportChild(childId);
+        const state = support.state(childId);
+        return {
+          overview: overviewOf(child, state),
+          todo: support.todo(childId, child).map(({ focus, reason, done }) => ({
+            key: focus.key,
+            subject: focus.subject,
+            label: focus.label,
+            reason,
+            done,
+          })),
+          enabled: state.enabled,
+          aids: state.aids ?? [],
+          aidOptions: me.role === 'parent' ? AIDS : null,
+          writing: sheets.available,
+        };
+      },
+    ],
+    [
+      'POST /api/skills/sheet',
+      async (ctx) => {
+        const childId = await canSee(requireMember(ctx), ctx.data.childId);
+        const child = await supportChild(childId);
+        return sheetCall(async () =>
+          sheetView(
+            await sheets.sheet(childId, child, support.state(childId), ctx.data.key, ctx.data.refresh === true),
+          ),
+        );
+      },
+    ],
+    [
+      'POST /api/skills/aids',
+      async (ctx) => {
+        requireParent(ctx);
+        const childId = await canSee(requireMember(ctx), ctx.data.childId);
+        return { aids: support.setAids(childId, ctx.data.aids) };
       },
     ],
     [

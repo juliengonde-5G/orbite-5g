@@ -87,6 +87,8 @@ export interface SupportChild {
   history: ModuleRecord[];
   /** Plan fixé par l'audit du jour : il ne bouge plus jusqu'à demain. */
   daily: DailyPlan | null;
+  /** Aides choisies par un parent pour adapter les fiches (identifiants de `AIDS`). */
+  aids?: string[];
 }
 
 /** Résultat de l'audit quotidien d'un élève. */
@@ -99,7 +101,17 @@ export interface DailyPlan {
   notified: boolean;
 }
 
-export const emptySupport = (): SupportChild => ({ enabled: false, focuses: {}, history: [], daily: null });
+export const emptySupport = (): SupportChild => ({ enabled: false, focuses: {}, history: [], daily: null, aids: [] });
+
+/** Ce qui aide un élève à apprendre, choisi par un parent : il oriente la rédaction des fiches. */
+export const AIDS: Record<string, string> = {
+  schemas: 'aime les schémas, dessins et tableaux',
+  courtes: 'a besoin de consignes très courtes, une étape à la fois',
+  concret: 'comprend mieux avec des exemples de la vie courante',
+  encourage: 'a besoin d’encouragements réguliers',
+  defis: 'aime les défis et les questions un peu plus difficiles',
+  lent: 'avance à son rythme : peu d’exercices, bien expliqués',
+};
 
 const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -122,7 +134,7 @@ export function levelOf(className: string | undefined): string {
 export const shiftDay = (date: string, days: number): string =>
   new Date(Date.parse(date + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 
-const slug = (text: string) =>
+export const slug = (text: string) =>
   fold(text)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
@@ -397,6 +409,21 @@ export interface SupportMonitor {
 }
 
 /**
+ * Statut d'un point : `acquise` à partir du niveau 3 d'ÉcoleDirecte, `reprendre` sous 0,5 tant que le
+ * travail fait ici ne l'a pas consolidé (3 modules et 80 % de réussite), sinon `progres`.
+ */
+export function skillStatus(
+  mastery: number,
+  worked: Pick<FocusState, 'seen' | 'right' | 'total'> | null,
+): SkillMonitor['status'] {
+  const success = worked && worked.total > 0 ? worked.right / worked.total : null;
+  const consolidated = !!worked && worked.seen >= 3 && success !== null && success >= 0.8;
+  // Niveau 3 (« satisfaisante ») = 2/3 : on arrondit avant de comparer pour qu'il compte comme acquis.
+  if (Math.round(mastery * 1000) / 1000 >= 0.667) return 'acquise';
+  return mastery < 0.5 && !consolidated ? 'reprendre' : 'progres';
+}
+
+/**
  * Suivi d'un seul enfant : ce que disent ses évaluations ÉcoleDirecte, et ce que
  * le travail complémentaire a donné. La maîtrise « école » reste celle d'ÉcoleDirecte :
  * le travail ici nuance le statut d'un point, il ne le remplace pas.
@@ -414,14 +441,7 @@ export function monitorOf(
     const level = focus.source === 'competence' ? ((Math.round(focus.mastery * 3) + 1) as 1 | 2 | 3 | 4) : null;
     const worked = state && state.seen > 0 ? state : null;
     const success = worked && worked.total > 0 ? worked.right / worked.total : null;
-    const consolidated = !!worked && worked.seen >= 3 && success !== null && success >= 0.8;
-    const status: SkillMonitor['status'] =
-      // Niveau 3 (« satisfaisante ») = 2/3 : on arrondit avant de comparer pour qu'il compte comme acquis.
-      Math.round(focus.mastery * 1000) / 1000 >= 0.667
-        ? 'acquise'
-        : focus.mastery < 0.5 && !consolidated
-          ? 'reprendre'
-          : 'progres';
+    const status = skillStatus(focus.mastery, worked);
     return {
       key: focus.key,
       subject: focus.subject,
