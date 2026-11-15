@@ -35,7 +35,7 @@ export class ApiError extends Error {
 }
 
 /** Préfixe de la famille (`/f/dupont-k7x2`), fourni par le serveur dans la page ; vide pour la famille « maison ». */
-const BASE = document.querySelector('meta[name="orbite-base"]')?.getAttribute('content') ?? '';
+export const BASE = document.querySelector('meta[name="orbite-base"]')?.getAttribute('content') ?? '';
 
 async function callAt<T>(base: string, method: 'GET' | 'POST', path: string, data?: unknown): Promise<T> {
   let res: Response;

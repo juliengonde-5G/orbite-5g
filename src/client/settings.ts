@@ -2,7 +2,7 @@
  * Onglet « Moi » : préférences personnelles et, pour le parent administrateur,
  * la connexion ÉcoleDirecte et la gestion des profils de la famille.
  */
-import { api, ApiError } from './api.ts';
+import { api, ApiError, BASE } from './api.ts';
 import { clear, h, icon, tap } from './dom.ts';
 import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
@@ -492,7 +492,7 @@ export function memberSheet(m: MemberView, actions: SettingsActions, refresh: ()
                               void navigator
                                 .share({
                                   title: 'Orbite',
-                                  text: `Ton code d’activation Orbite : ${code} (valable 72 h). Ouvre ${location.origin} et choisis ton profil.`,
+                                  text: `Ton code d’activation Orbite : ${code} (valable 72 h). Ouvre ${location.origin}${BASE}/ et choisis ton profil.`,
                                 })
                                 .catch(() => undefined),
                           },
