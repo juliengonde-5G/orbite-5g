@@ -26,6 +26,7 @@ import { lessonsBody, weekStrip } from './class-view.ts';
 import { familyDocsBlock } from './docs-view.ts';
 import { familyMailBlock, mailCard } from './mail-view.ts';
 import { trainCard } from './train-view.ts';
+import { newsBanner } from './news-view.ts';
 import { state } from './state.ts';
 import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note, Period, SubjectAverage } from '../shared/types.ts';
@@ -441,6 +442,7 @@ export function studentHome(child: Child, actions: Actions, asParent: boolean): 
     child.error && h('p.inline-error', child.error),
     h(
       'div.flow',
+      newsBanner(actions),
       coachingLine(child, actions),
       homeworkBlock(child, actions, 'focus'),
       trainCard(child, actions, asParent),
@@ -547,6 +549,7 @@ export function familyHome(actions: Actions): HTMLElement {
     edBanner(actions),
     h(
       'div.flow',
+      newsBanner(actions),
       h(
         'button.recap-link',
         { type: 'button', onclick: () => actions.go('recap') },

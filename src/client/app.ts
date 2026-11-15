@@ -19,6 +19,7 @@ import { lifeView } from './life-view.ts';
 import { lessonKey } from './class-view.ts';
 import { recapView } from './recap-view.ts';
 import { docsView } from './docs-view.ts';
+import { newsView } from './news-view.ts';
 import { markSupportStale, trainView } from './train-view.ts';
 import { mailScope, messagesView, messageView } from './mail-view.ts';
 import type { SessionInfo } from '../shared/types.ts';
@@ -37,6 +38,7 @@ const HASH: Record<Route, string> = {
   recap: 'recap',
   docs: 'documents',
   train: 'entrainement',
+  news: 'nouveautes',
   me: 'moi',
 };
 
@@ -512,7 +514,9 @@ function currentView(): HTMLElement {
       reloadData: () => void loadData(),
       logout: () => void logout(),
       toast,
+      go: (route) => actions.go(route),
     });
+  if (state.route === 'news') return newsView({ go: (route) => actions.go(route), rerender: render, toast });
   if (!state.data) {
     if (state.dataError) return waiting(state.dataError);
     return h(
@@ -593,6 +597,7 @@ function render(): void {
     const sel = state.selected;
     const own =
       state.route === 'me' ||
+      state.route === 'news' ||
       state.route === 'home' ||
       state.route === 'recap' ||
       state.route === 'docs' ||

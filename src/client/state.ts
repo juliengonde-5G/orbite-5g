@@ -2,6 +2,7 @@
  * État partagé de l'interface. Les vues lisent cet objet ; `app.ts` le modifie
  * puis demande un nouveau rendu (`render`).
  */
+import type { ReportView } from '../shared/releases.ts';
 import type { SupportStatus } from '../shared/support.ts';
 import type { TrainRun } from './train-view.ts';
 import type {
@@ -32,6 +33,7 @@ export type Route =
   | 'recap'
   | 'docs'
   | 'train'
+  | 'news'
   | 'me';
 
 export interface HomeworkState {
@@ -107,6 +109,8 @@ export const state = {
   lessonDay: null as string | null,
   /** Élève affiché dans les onglets Devoirs, Notes et Progrès (parents). */
   selected: null as string | null,
+  /** Signalements reçus (parent administrateur). */
+  reports: { value: null, loading: false, error: null } as Loadable<{ items: ReportView[]; open: number }>,
   route: 'home' as Route,
   notesMode: 'recent' as 'recent' | 'subjects' | 'progress',
   period: 'all',
@@ -131,6 +135,7 @@ export function resetData(): void {
   state.docsKind = 'all';
   state.support.clear();
   state.train = null;
+  state.reports = { value: null, loading: false, error: null };
   state.tasksMode = 'todo';
   state.taskDay = null;
   state.lessonDay = null;

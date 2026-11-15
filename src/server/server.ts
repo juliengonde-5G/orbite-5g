@@ -32,6 +32,7 @@ import { Family, FamilyError, type MemberRecord } from './family.ts';
 import { Vault } from './vault.ts';
 import { DemoEd, demoExerciseWriter } from './demo.ts';
 import { Notifier } from './notifier.ts';
+import { ReportError, Reports } from './reports.ts';
 import { ClaudeExerciseWriter, Support, SupportError } from './support.ts';
 import { noteKey, parisDate } from '../shared/metrics.ts';
 import type {
@@ -166,6 +167,7 @@ export interface AppOptions {
   notifier?: Notifier;
   /** Soutien scolaire imposé (tests). */
   support?: Support;
+  reports?: Reports;
 }
 
 interface SeenDoc {
@@ -318,6 +320,7 @@ export function createApp(options: AppOptions): http.Server {
   })();
   const notifier = options.notifier ?? new Notifier({ vault, family, ed, subject: pushSubject });
   const support = options.support ?? new Support(vault, new ClaudeExerciseWriter(coach));
+  const reports = options.reports ?? new Reports(vault);
   const pushTimer = options.background ? notifier.start() : undefined;
   const loginAttempts: number[] = [];
 
@@ -406,6 +409,15 @@ export function createApp(options: AppOptions): http.Server {
     const me = requireMember(ctx);
     if (me.role !== 'child') throw new HttpError('Les modules se font depuis le profil de l’élève.', 403);
     return canSee(me, ctx.data.childId);
+  };
+
+  const reportCall = <T>(run: () => T): T => {
+    try {
+      return run();
+    } catch (e) {
+      if (e instanceof ReportError) throw new HttpError(e.message, e.code);
+      throw e;
+    }
   };
 
   const supportCall = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -915,6 +927,46 @@ export function createApp(options: AppOptions): http.Server {
         } catch (e) {
           throw new HttpError((e as Error).message || 'Conseil indisponible.', 503);
         }
+      },
+    ],
+    [
+      'POST /api/report',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        reportCall(() => reports.add(me, ctx.data, version));
+        const admins = family.members.filter((m) => m.admin);
+        // Prévenir l'administrateur est un plus : un échec d'envoi ne doit pas perdre le signalement.
+        await notifier
+          .notify(
+            admins,
+            { title: 'Orbite', body: `Nouveau signalement de ${me.name}.`, url: '/#moi', tag: 'report' },
+            null,
+          )
+          .catch(() => 0);
+        return { ok: true };
+      },
+    ],
+    [
+      'GET /api/admin/reports',
+      async (ctx) => {
+        requireAdmin(ctx);
+        return { items: reports.list(), open: reports.open() };
+      },
+    ],
+    [
+      'POST /api/admin/report/resolve',
+      async (ctx) => {
+        requireAdmin(ctx);
+        reportCall(() => reports.resolve(ctx.data.id, ctx.data.done !== false));
+        return { items: reports.list(), open: reports.open() };
+      },
+    ],
+    [
+      'POST /api/admin/report/remove',
+      async (ctx) => {
+        requireAdmin(ctx);
+        reportCall(() => reports.remove(ctx.data.id));
+        return { items: reports.list(), open: reports.open() };
       },
     ],
     [

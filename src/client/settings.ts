@@ -8,6 +8,7 @@ import { initial, sinceText } from './format.ts';
 import { state } from './state.ts';
 import { sky } from './views.ts';
 import { notificationsCard } from './push-view.ts';
+import { helpCard, reportsBlock } from './news-view.ts';
 import type { AuthResult, ClaudeKeyStatus, ColorKey, MemberView, Prefs } from '../shared/types.ts';
 
 export interface SettingsActions {
@@ -18,6 +19,7 @@ export interface SettingsActions {
   reloadData(): void;
   logout(): void;
   toast(message: string): void;
+  go(route: string): void;
 }
 
 const COLORS: { key: ColorKey; label: string }[] = [
@@ -839,6 +841,8 @@ export function meView(actions: SettingsActions): HTMLElement {
     me.role === 'parent' && me.admin && claudeCard(actions),
     me.role === 'parent' && competenceBlock(),
     me.role === 'parent' && me.admin && familyBlock(actions),
+    me.role === 'parent' && me.admin && reportsBlock(actions),
+    helpCard(actions),
     installHint(),
     h(
       'section.block',
