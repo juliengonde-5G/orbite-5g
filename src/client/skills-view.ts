@@ -28,6 +28,8 @@ const sheets = new Map<string, Entry<SheetView>>();
 const openSubjects = new Map<string, Set<string>>();
 const openSheets = new Set<string>();
 let aidError: string | null = null;
+/** Enregistrements des aides en cours, un par élève : ils partent dans l'ordre des clics. */
+const aidSaves = new Map<string, Promise<unknown>>();
 
 const STALE = 5 * 60000;
 const isStale = (time: number | undefined): boolean =>
@@ -44,14 +46,19 @@ const pretty = (subject: SubjectOverview): string =>
 
 /** À appeler quand les données de l'application sont rechargées. */
 export function markSkillsStale(): void {
-  for (const entry of pages.values()) entry.time = 0;
-  for (const entry of sheets.values()) entry.time = 0;
+  for (const entry of [...pages.values(), ...sheets.values()]) {
+    entry.time = 0;
+    entry.error = null;
+  }
 }
 
 function pageOf(child: Child, actions: Actions): SkillsPage | null {
   const entry = pages.get(child.id) ?? { value: null, loading: false, error: null };
   pages.set(child.id, entry);
-  if (!entry.loading && !entry.error && (!entry.value || isStale(entry.time))) {
+  // Après une erreur (réseau coupé, par exemple), une nouvelle tentative a lieu au bout de 30 secondes.
+  const retry = !!entry.error && Date.now() - (entry.time ?? 0) > 30000;
+  if (!entry.loading && (!entry.error || retry) && (!entry.value || isStale(entry.time))) {
+    entry.error = null;
     entry.loading = true;
     api.skills
       .page(child.id)
@@ -429,21 +436,31 @@ function aidsBlock(page: SkillsPage, child: Child, actions: Actions): HTMLElemen
             'aria-pressed': String(chosen.has(id)),
             onclick: () => {
               aidError = null;
-              const next = new Set(chosen);
+              const entry = pages.get(child.id);
+              if (!entry?.value) return;
+              // La sélection change tout de suite ; les envois se font l'un après l'autre,
+              // chacun avec la sélection du moment, pour qu'un clic rapide n'efface pas le précédent.
+              const next = new Set(entry.value.aids);
               if (next.has(id)) next.delete(id);
               else next.add(id);
-              const entry = pages.get(child.id);
-              api.skills
-                .aids(child.id, [...next])
-                .then(({ aids }) => {
-                  if (entry?.value) entry.value.aids = aids;
-                  // Les fiches se réécrivent à la prochaine ouverture : le profil a changé.
-                  for (const key of [...sheets.keys()]) if (key.startsWith(`${child.id}|`)) sheets.delete(key);
-                })
-                .catch((e) => {
-                  aidError = message(e, 'Enregistrement impossible.');
-                })
-                .finally(actions.rerender);
+              entry.value.aids = [...next];
+              actions.rerender();
+              const run = () => api.skills.aids(child.id, entry.value?.aids ?? []);
+              aidSaves.set(
+                child.id,
+                (aidSaves.get(child.id) ?? Promise.resolve())
+                  .then(run)
+                  .then(() => {
+                    // Les fiches se réécrivent à la prochaine ouverture : le profil a changé.
+                    for (const key of [...sheets.keys()]) if (key.startsWith(`${child.id}|`)) sheets.delete(key);
+                  })
+                  .catch((e) => {
+                    aidError = message(e, 'Enregistrement impossible.');
+                    // Revient à ce que le serveur a gardé.
+                    entry.time = 0;
+                  })
+                  .finally(actions.rerender),
+              );
             },
           },
           `${child.name} ${text}`,
