@@ -3603,6 +3603,7 @@ button {
   }
 }
 .release-notes {
+  list-style: disc;
   display: grid;
   gap: 6px;
   margin: 0;
@@ -3645,4 +3646,81 @@ button {
     padding: 0;
     color: var(--ink);
   }
+}
+
+/* ---------- Familles et assistant d'installation ---------- */
+.setup-subtitle {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+}
+.setup-list {
+  list-style: disc;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.setup-step {
+  display: grid;
+  gap: 10px;
+  &.is-done {
+    opacity: 0.75;
+  }
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+}
+.setup-num {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent, var(--c-comete));
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  flex: none;
+}
+.invite-link {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 0.9rem;
+  word-break: break-all;
+  user-select: all;
+}
+.consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  input {
+    margin-top: 3px;
+    flex: none;
+  }
+}
+.family-row {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  p {
+    margin: 0;
+  }
+  &.is-done {
+    opacity: 0.6;
+  }
+}
+.invite form {
+  display: grid;
+  gap: 12px;
 }

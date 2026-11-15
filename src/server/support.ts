@@ -313,7 +313,9 @@ export class Support {
       })
       .catch((e: Error) => {
         throw new SupportError(
-          /Clé|absente/.test(e.message) ? e.message : 'Exercices indisponibles pour le moment, réessaie plus tard.',
+          /Clé|absente|limite quotidienne|suspendue/.test(e.message)
+            ? e.message
+            : 'Exercices indisponibles pour le moment, réessaie plus tard.',
           503,
         );
       })
