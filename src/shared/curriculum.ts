@@ -92,7 +92,7 @@ export const CURRICULUM: readonly CurriculumEntry[] = [
     subject: 'maths',
     domain: 'Calcul numérique : priorités et puissances',
     levels: ['5e', '4e', '3e'],
-    keywords: ['priorite', 'puissance', 'racine', 'calcul numerique', 'operation', 'calculer', 'calcul'],
+    keywords: ['priorite', 'puissance', 'racine', 'calcul numerique', 'notation scientifique'],
     attendu:
       'Respecter les priorités opératoires, utiliser parenthèses, puissances et racines carrées, écrire en notation scientifique (3e).',
     prerequis: 'Les tables et le calcul mental de base.',
@@ -182,7 +182,10 @@ export const CURRICULUM: readonly CurriculumEntry[] = [
     attendu: 'Reconnaître les solides, lire un patron, calculer des volumes, agrandir ou réduire.',
     prerequis: 'Nommer faces, arêtes et sommets.',
     erreurs: ['Confondre aire de base et volume.', 'Oublier une face dans un patron.'],
-    appuis: ['Manipuler ou dessiner le patron.', 'Volume = aire de la base × hauteur.'],
+    appuis: [
+      'Manipuler ou dessiner le patron.',
+      'Prisme et cylindre : volume = aire de la base × hauteur. Pyramide et cône : un tiers de ce produit.',
+    ],
   },
   {
     id: 'maths-donnees',
@@ -496,7 +499,15 @@ export function curriculumFor(subject: SupportSubject, label: string): Curriculu
   let best: CurriculumEntry | null = null;
   let bestScore = 0;
   for (const entry of mine) {
-    const score = entry.keywords.reduce((n, k) => (text.includes(fold(k)) ? n + Math.max(1, k.length / 4) : n), 0);
+    // Un mot-clé contenu dans un autre mot-clé déjà trouvé ne compte pas deux fois (« calcul » et « calculer »).
+    const found: string[] = [];
+    let score = 0;
+    for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) {
+      const word = fold(k);
+      if (!text.includes(word) || found.some((f) => f.includes(word))) continue;
+      found.push(word);
+      score += Math.max(1, word.length / 4);
+    }
     if (score > bestScore) {
       best = entry;
       bestScore = score;

@@ -259,3 +259,16 @@ test('le budget du jour est réservé avant d’attendre Claude', async () => {
   );
   assert.equal(requests.length, 12, 'une seule demande de plus : le plafond est de 12');
 });
+
+test('le recueil choisit la notion précise plutôt qu’un mot générique', () => {
+  assert.equal(curriculumFor('maths', 'Calculer avec des fractions').id, 'maths-fractions');
+  assert.equal(curriculumFor('maths', 'Calculer le volume d’une pyramide').id, 'maths-espace');
+  assert.equal(curriculumFor('maths', 'Calcul numérique : priorités opératoires').id, 'maths-calcul');
+});
+
+test('la formule du volume est juste pour chaque solide', () => {
+  const espace = CURRICULUM.find((e) => e.id === 'maths-espace')!;
+  const tips = espace.appuis.join(' ');
+  assert.match(tips, /pyramide et cône : un tiers/i);
+  assert.doesNotMatch(tips, /^Volume = aire de la base × hauteur\.$/m);
+});
