@@ -29,7 +29,17 @@ import { trainCard } from './train-view.ts';
 import { newsBanner } from './news-view.ts';
 import { setupCard } from './setup-view.ts';
 import { state } from './state.ts';
-import { gradeBand, metrics, noteKey, parisDate, subjectGroups, toTwenty, valid } from '../shared/metrics.ts';
+import {
+  gradeBand,
+  metrics,
+  noteKey,
+  parisDate,
+  steadyTrend,
+  subjectGroups,
+  toTwenty,
+  valid,
+} from '../shared/metrics.ts';
+import type { Metrics } from '../shared/metrics.ts';
 import type { Child, ColorKey, Homework, Note, Period, SubjectAverage } from '../shared/types.ts';
 
 export interface Actions {
@@ -587,7 +597,8 @@ function alertsBlock(children: Child[], actions: Actions): HTMLElement | null {
   const rows = children.flatMap((c) =>
     subjectGroups(c.notes)
       .map((g) => ({ c, g, m: metrics(g.notes) }))
-      .filter((x) => x.m.trend !== null && x.m.trend <= -1),
+      .map((x) => ({ ...x, trend: steadyTrend(x.m) }))
+      .filter((x): x is typeof x & { trend: number } => x.trend !== null && x.trend <= -1),
   );
   if (!rows.length) return null;
   return h(
@@ -597,7 +608,7 @@ function alertsBlock(children: Child[], actions: Actions): HTMLElement | null {
       'ul.alert-list',
       rows
         .slice(0, 6)
-        .map(({ c, g, m }) =>
+        .map(({ c, g, m, trend }) =>
           h(
             'li',
             h(
@@ -605,7 +616,7 @@ function alertsBlock(children: Child[], actions: Actions): HTMLElement | null {
               { type: 'button', style: accent(c.id), onclick: () => actions.go('progress', c.id) },
               h('span.child-tag', c.name),
               h('span.alert-subject', subjectLabel(g.label)),
-              h('span.fact.trend-down', signed(m.trend)),
+              h('span.fact.trend-down', { title: trendTitle(m) }, signed(trend), h('small.trend-span', '30 j')),
             ),
           ),
         ),
@@ -754,8 +765,12 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
               'ul.subject-list',
               groups.map((g) => {
                 const m = metrics(g.notes);
+                const trend = steadyTrend(m);
                 const off = official.get(g.id);
                 const shown = off?.average ?? m.average;
+                // La moyenne officielle suit les coefficients et les évaluations retenus par le collège :
+                // quand elle s'écarte des notes affichées dessous, on montre aussi leur moyenne.
+                const gapped = off?.average != null && m.average !== null && Math.abs(off.average - m.average) >= 0.5;
                 const open = state.openSubject === g.id;
                 return h(
                   `li.subject${open ? '.is-open' : ''}`,
@@ -771,16 +786,19 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
                     },
                     subjectMark(g.label),
                     h('span.subject-name', subjectLabel(g.label)),
-                    m.trend !== null &&
+                    trend !== null &&
                       h(
-                        `span.fact.trend-${Math.abs(m.trend) < 0.05 ? 'flat' : m.trend > 0 ? 'up' : 'down'}`,
-                        signed(m.trend),
+                        `span.fact.trend-${Math.abs(trend) < 0.05 ? 'flat' : trend > 0 ? 'up' : 'down'}`,
+                        { title: trendTitle(m) },
+                        signed(trend),
+                        h('small.trend-span', '30 j'),
                       ),
                     h(
                       `span.subject-avg.band-${shown == null ? 'neutral' : shown >= 14 ? 'good' : shown >= 10 ? 'average' : 'poor'}`,
                       { title: off?.average != null ? 'Moyenne officielle' : 'Moyenne indicative' },
                       average(shown),
                       off?.average != null && h('small.official-mark', 'officielle'),
+                      gapped && h('small.official-mark.notes-mark', `notes ${average(m.average)}`),
                     ),
                   ),
                   open && off && officialDetail(off),
@@ -798,10 +816,15 @@ export function gradesView(child: Child, actions: Actions): HTMLElement {
       h(
         'p.footnote',
         official.size
-          ? 'Les moyennes marquées « officielle » viennent du collège. Les autres sont indicatives : notes ramenées sur 20 et pondérées.'
-          : 'Moyenne indicative : notes ramenées sur 20 et pondérées, sans les coefficients des matières.',
+          ? 'Les moyennes marquées « officielle » viennent du collège, qui choisit ses coefficients et ses évaluations ; « notes » est la moyenne des notes affichées ici. Les autres moyennes sont indicatives : notes ramenées sur 20 et pondérées. La flèche compare les 30 derniers jours aux 30 précédents, avec au moins deux notes de chaque côté.'
+          : 'Moyenne indicative : notes ramenées sur 20 et pondérées, sans les coefficients des matières. La flèche compare les 30 derniers jours aux 30 précédents, avec au moins deux notes de chaque côté.',
       ),
   );
+}
+
+/** Explication de la tendance d'une matière : les deux moyennes comparées et leur nombre de notes. */
+function trendTitle(m: Metrics): string {
+  return `Moyenne des 30 derniers jours (${average(m.recentAverage)}, ${m.recentCount} notes) moins celle des 30 jours précédents (${average(m.previousAverage)}, ${m.previousCount} notes).`;
 }
 
 /** Détail d'une matière : moyenne de classe, fourchette et professeurs (jamais de rang). */

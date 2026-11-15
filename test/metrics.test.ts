@@ -25,6 +25,7 @@ import {
   metrics,
   nextSchoolDay,
   photoUrl,
+  steadyTrend,
   subjectGroups,
   toTwenty,
   valid,
@@ -363,4 +364,26 @@ test('moyennes officielles par matière, conseil de classe et appréciations, sa
   assert.equal(noRange?.subjects?.[0]?.min, null);
   assert.equal(noRange?.subjects?.[0]?.max, 19);
   assert.equal(noRange?.subjects?.[0]?.coefficient, null);
+});
+
+test("la tendance d'une matière exige deux notes dans chaque fenêtre", () => {
+  // Cas réel d'éducation physique : 15 le 12 nov., 17 le 15 oct., 20 le 30 sept.
+  const sport = [n(15, 20, 1, '2026-11-12'), n(17, 20, 1, '2026-10-15'), n(20, 20, 1, '2026-09-30')];
+  const m = metrics(sport, new Date('2026-11-15T16:00:00+01:00'));
+  assert.equal(m.trend, -3.5);
+  assert.equal(m.recentAverage, 15);
+  assert.equal(m.previousAverage, 18.5);
+  assert.equal(steadyTrend(m), null);
+  const more = metrics([...sport, n(14, 20, 1, '2026-11-02')], new Date('2026-11-15T16:00:00+01:00'));
+  assert.equal(more.recentCount, 2);
+  assert.equal(more.previousCount, 2);
+  assert.equal(steadyTrend(more), 14.5 - 18.5);
+});
+
+test('la fenêtre de tendance suit le jour civil à Paris, pas le fuseau du navigateur', () => {
+  // 00 h 30 à Paris le 16 novembre : la note du 16 est déjà dans la fenêtre récente.
+  const m = metrics([n(10, 20, 1, '2026-11-16')], new Date('2026-11-15T23:30:00Z'));
+  assert.equal(m.recentCount, 1);
+  // 23 h 30 à Paris le 15 : une note du 16 est dans le futur.
+  assert.equal(metrics([n(10, 20, 1, '2026-11-16')], new Date('2026-11-15T22:30:00Z')).recentCount, 0);
 });
