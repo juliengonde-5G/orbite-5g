@@ -4109,6 +4109,11 @@ button {
     padding-left: 1.2rem;
   }
 }
+.sheet-exercise p,
+.sheet-part li {
+  // Les retours à la ligne de la fiche sont conservés : une opération ou une étape par ligne.
+  white-space: pre-line;
+}
 .sheet-exercise {
   display: grid;
   gap: 6px;

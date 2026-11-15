@@ -572,7 +572,9 @@ export function memberSheet(m: MemberView, actions: SettingsActions, refresh: ()
                       'aria-label': 'Élève rattaché',
                       onchange: async (e: Event) => {
                         const v = (e.target as HTMLSelectElement).value;
-                        await api.admin.update(m.id, { studentId: v || null });
+                        // Le profil mis à jour redessine la fiche : le réglage de lecture suit le nouvel élève.
+                        Object.assign(m, await api.admin.update(m.id, { studentId: v || null }));
+                        draw();
                         actions.toast('Rattachement enregistré.');
                         refresh();
                         actions.reloadData();
