@@ -339,3 +339,21 @@ test('notifications : au-delà de trois nouveautés, un résumé plutôt qu’un
     rmSync(t.dir, { recursive: true, force: true });
   }
 });
+
+test('notifications : un signalement respecte les heures calmes', async () => {
+  const now = { value: new Date('2026-11-05T22:00:00Z') };
+  const t = setup(now);
+  try {
+    const message = { title: 'Orbite', body: 'Nouveau signalement de Léo.', url: '/#moi', tag: 'report' };
+    await t.notifier.queue([t.papa], message, null);
+    assert.equal(t.sent.length, 0, 'rien entre 22 h et 7 h');
+    now.value = new Date('2026-11-06T06:05:00Z');
+    await t.notifier.tick();
+    assert.deepEqual(
+      to(t.sent, 1).map((m) => m.title),
+      ['Orbite'],
+    );
+  } finally {
+    rmSync(t.dir, { recursive: true, force: true });
+  }
+});

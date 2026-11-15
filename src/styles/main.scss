@@ -3576,3 +3576,73 @@ button {
   color: var(--ink-2);
   font-size: 0.92rem;
 }
+
+/* ---------- Nouveautés et signalements ---------- */
+.news-banner {
+  display: grid;
+  gap: 10px;
+  .news-banner-text {
+    display: grid;
+    gap: 2px;
+    span {
+      color: var(--ink-2);
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+  }
+}
+.release-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  .release-date {
+    color: var(--ink-3);
+    font-size: 0.86rem;
+  }
+}
+.release-notes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.report-text {
+  min-height: 7.5em;
+  padding: 12px 16px;
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
+}
+.report-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.report-row {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  &.is-done {
+    opacity: 0.6;
+  }
+  p {
+    margin: 0;
+  }
+  .report-meta {
+    color: var(--ink-3);
+    font-size: 0.84rem;
+  }
+  .report-text {
+    min-height: 0;
+    padding: 0;
+    color: var(--ink);
+  }
+}

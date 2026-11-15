@@ -20,6 +20,7 @@ Version familiale d'[Orbite](https://github.com/thomasfaure/orbite-ed) (Thomas F
 - Mode lecture OpenDyslexic ou grands caractères, thème clair ou sombre, couleur personnelle.
 - Conseil du jour rédigé par Claude, facultatif (statistiques anonymes uniquement).
 - Soutien scolaire (maths, français, anglais), activé par un parent pour chaque enfant : jusqu'à 3 modules de 10 minutes par jour, choisis d'après les compétences et moyennes ÉcoleDirecte, avec révisions espacées. Les exercices sont rédigés par Claude (clé requise) et corrigés par le serveur ; aucune comparaison entre enfants.
+- Nouveautés et signalements : l'historique des versions (Moi → Nouveautés, bandeau après une mise à jour) et un bouton « Signaler un problème » ouvert à tous les profils ; le parent administrateur lit les signalements dans Moi et les marque comme traités. Le message est lu par l'administrateur ; ni note ni information sur l'appareil n'est jointe.
 
 Lecture seule : Orbite n'écrit rien sur ÉcoleDirecte (seule l'ouverture d'un message le marque comme lu). Les cases cochées et les partages restent dans Orbite.
 

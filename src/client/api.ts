@@ -3,6 +3,7 @@
  * par le serveur (protection CSRF) ; les erreurs deviennent des `ApiError`
  * dont le message est rédigé pour l'utilisateur.
  */
+import type { ReportKind, ReportView } from '../shared/releases.ts';
 import type { ModuleResult, ModuleView, SupportStatus } from '../shared/support.ts';
 import type {
   AuthResult,
@@ -86,6 +87,8 @@ export const api = {
   documents: (refresh = false) => call<DocumentList>('POST', '/api/documents', { refresh }),
   lessons: (childId: string, date: string) =>
     call<{ date: string; lessons: Lesson[] }>('POST', '/api/lessons', { childId, date }),
+  report: (kind: ReportKind, text: string, screen: string) =>
+    call<{ ok: true }>('POST', '/api/report', { kind, text, screen }),
   support: {
     status: (childId: string) => call<SupportStatus>('POST', '/api/support', { childId }),
     enable: (childId: string, enabled: boolean) =>
@@ -102,6 +105,11 @@ export const api = {
     test: () => call<{ sent: number }>('POST', '/api/push/test'),
   },
   admin: {
+    reports: () => call<{ items: ReportView[]; open: number }>('GET', '/api/admin/reports'),
+    resolveReport: (id: string, done: boolean) =>
+      call<{ items: ReportView[]; open: number }>('POST', '/api/admin/report/resolve', { id, done }),
+    removeReport: (id: string) =>
+      call<{ items: ReportView[]; open: number }>('POST', '/api/admin/report/remove', { id }),
     members: () => call<{ members: MemberView[]; ed: EdStatus }>('GET', '/api/admin/members'),
     connect: (username: string, password: string, remember: boolean) =>
       call<AuthResult>('POST', '/api/admin/ed/connect', { username, password, remember }),

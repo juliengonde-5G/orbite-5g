@@ -942,3 +942,47 @@ test('soutien scolaire : le parent active, seul l’élève répond, chacun rest
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('signalements : tout profil écrit, seul l’administrateur lit et classe', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'orbite-report-'));
+  const app = await start(dir);
+  try {
+    const parent = app.browser();
+    const admin = (await parent.get('/api/session')).body.members.find((m: any) => m.admin);
+    await parent.post('/api/setup', { memberId: admin.id, pin: '482916' });
+    const members = (await parent.get('/api/admin/members')).body.members;
+    const alex = members.find((x: any) => x.name === 'Alex');
+    const code = (await parent.post('/api/admin/member/code', { memberId: alex.id })).body.code;
+    const other = app.browser();
+    await other.post('/api/activate', { memberId: alex.id, code, pin: '730519' });
+    const leoMember = members.find((x: any) => x.name === 'Léo');
+    const leoCode = (await parent.post('/api/admin/member/code', { memberId: leoMember.id })).body.code;
+    const leo = app.browser();
+    await leo.post('/api/activate', { memberId: leoMember.id, code: leoCode, pin: '640281' });
+
+    assert.equal((await app.browser().post('/api/report', { kind: 'bug', text: 'Sans être connecté' })).status, 401);
+    assert.equal((await leo.post('/api/report', { kind: 'bug', text: '' })).status, 400);
+    const sent = await leo.post('/api/report', { kind: 'bug', text: 'Le soutien ne s’affiche pas', screen: 'notes' });
+    assert.equal(sent.status, 200);
+    assert.equal((await other.post('/api/report', { kind: 'idea', text: 'Un mode sombre plus doux' })).status, 200);
+
+    assert.equal((await leo.get('/api/admin/reports')).status, 403);
+    assert.equal((await other.get('/api/admin/reports')).status, 403, 'un parent simple ne lit pas non plus');
+    const list = await parent.get('/api/admin/reports');
+    assert.equal(list.status, 200);
+    assert.equal(list.body.open, 2);
+    assert.deepEqual(list.body.items.map((i: any) => i.by).sort(), ['Alex', 'Léo']);
+    assert.ok(!JSON.stringify(list.body).includes('memberId'));
+
+    const id = list.body.items.find((i: any) => i.by === 'Léo').id;
+    assert.equal((await leo.post('/api/admin/report/resolve', { id, done: true })).status, 403);
+    let next = await parent.post('/api/admin/report/resolve', { id, done: true });
+    assert.equal(next.body.open, 1);
+    next = await parent.post('/api/admin/report/remove', { id });
+    assert.equal(next.body.items.length, 1);
+    assert.equal((await parent.post('/api/admin/report/remove', { id })).status, 404);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

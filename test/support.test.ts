@@ -326,7 +326,7 @@ test('service : désactivé par défaut, activé par un parent, plan limité à 
 });
 
 test('service : la solution ne quitte pas le serveur, correction unique, mémoire conservée', async () => {
-  const { support, child, vaultDir, log } = setup();
+  const { support, child, vaultDir, log, clock } = setup();
   support.setEnabled('1:11', true);
   const key = support.status('1:11', child).plan[0]!.key;
 
@@ -362,7 +362,11 @@ test('service : la solution ne quitte pas le serveur, correction unique, mémoir
   assert.throws(() => support.answer('1:11', child, view.id, [1, 1, 1, 1, 1], 1), /déjà été corrigé/);
 
   // La mémoire survit à un redémarrage.
-  const reloaded = new Support(new Vault(vaultDir), { available: true, write: async () => valid5() });
+  const reloaded = new Support(
+    new Vault(vaultDir),
+    { available: true, write: async () => valid5() },
+    () => clock.value,
+  );
   const status = reloaded.status('1:11', child);
   assert.equal(status.enabled, true);
   assert.equal(status.doneToday, 1);
