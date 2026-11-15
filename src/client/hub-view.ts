@@ -14,6 +14,7 @@ import type { FamilyView, HubOverview } from '../shared/hub.ts';
 let overview: HubOverview | null = null;
 let loading = false;
 let failure: string | null = null;
+let loadedAt = 0;
 
 const dayText = (time: number) => new Date(time).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
@@ -153,14 +154,19 @@ function familyRow(family: FamilyView, actions: SettingsActions): HTMLElement {
 
 /** Bloc de l'écran Moi de l'administrateur de la plateforme. */
 export function hubBlock(actions: SettingsActions): HTMLElement {
-  if (!overview && !loading && !failure && state.session?.hub) {
+  // Relu à l'ouverture de Moi, puis au plus toutes les 30 s : une famille créée ailleurs apparaît sans recharger.
+  if (!loading && state.session?.hub && Date.now() - loadedAt > 30000) {
     loading = true;
     hubApi
       .families()
-      .then((value) => (overview = value))
+      .then((value) => {
+        overview = value;
+        failure = null;
+      })
       .catch((e) => (failure = e instanceof ApiError ? e.message : 'Familles indisponibles.'))
       .finally(() => {
         loading = false;
+        loadedAt = Date.now();
         actions.rerender();
       });
   }

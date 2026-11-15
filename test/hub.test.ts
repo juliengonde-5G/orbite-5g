@@ -192,6 +192,18 @@ test('MeteredCoach : la famille ne peut ni changer ni vérifier la clé', async 
   await assert.rejects(() => metered.check('sk-ant-x'), QuotaError);
 });
 
+test(
+  'création : un prénom avec séparateur ou sans lettre est refusé avant de consommer l’invitation',
+  withDir(async (dir) => {
+    const hub = newHub(dir, { now: new Date('2026-11-15T10:00:00Z') });
+    const token = hub.invite('Test');
+    for (const adminName of [';;', 'Léa;Max', '--', 'a,b'])
+      assert.throws(() => hub.create(token, { familyName: 'Famille', adminName }), HubError, adminName);
+    assert.equal(hub.invites().length, 1, 'l’invitation reste utilisable');
+    assert.ok(hub.create(token, { familyName: 'Famille', adminName: 'Léa' }).family.slug);
+  }),
+);
+
 test('MeteredCoach : un conseil servi par le cache ne consomme pas le plafond', async () => {
   let upstream = 0;
   const transport = (async () => {

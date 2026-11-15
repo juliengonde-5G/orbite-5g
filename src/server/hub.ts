@@ -198,7 +198,8 @@ export class Hub {
     if (familyName.length < 2 || familyName.length > 40)
       throw new HubError('Donne un nom de famille (2 à 40 caractères).');
     if (adminName.length < 2 || adminName.length > 30) throw new HubError('Ton prénom doit faire 2 à 30 caractères.');
-    if (/[,:+]/.test(adminName)) throw new HubError('Le prénom ne peut pas contenir « , », « : » ni « + ».');
+    if (/[,;:+]/.test(adminName)) throw new HubError('Le prénom ne peut pas contenir « , », « ; », « : » ni « + ».');
+    if (!/[\p{L}\p{N}]/u.test(adminName)) throw new HubError('Ton prénom doit contenir au moins une lettre.');
     let slug = '';
     do {
       slug = `${slugify(familyName)}-${Array.from({ length: 4 }, () => SUFFIX[randomInt(SUFFIX.length)]).join('')}`;
