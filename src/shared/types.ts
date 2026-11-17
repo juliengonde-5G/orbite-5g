@@ -419,6 +419,8 @@ export interface CarnetEntry {
 
 export interface Carnet {
   entries: CarnetEntry[];
+  /** Structure de la réponse ÉcoleDirecte (noms et types des champs, jamais les valeurs), pour les parents. */
+  shape?: string;
 }
 
 /** État de la clé API Claude, pour le parent administrateur. La clé elle-même n'est jamais renvoyée. */

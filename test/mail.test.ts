@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EcoleDirecte,
+  describeShape,
   dispositionName,
   htmlText,
   normalizeDocuments,
@@ -262,4 +263,10 @@ test('téléchargements : le bon établissement est réactivé même si la liste
   assert.match(calls[0] ?? '', /renewtoken/);
   assert.match(calls[1] ?? '', /fichierId=99&leTypeDeFichier=PIECE_JOINTE/);
   await assert.rejects(ed.documentFile('12', '../x'), /introuvable/);
+});
+
+test('structure d’une réponse : noms et types, jamais les valeurs', () => {
+  const shape = describeShape({ correspondances: [{ id: 1, contenu: 'secret', auteur: { nom: 'X' } }], suivis: [] });
+  assert.equal(shape, '{correspondances:[1]{id:number,contenu:string,auteur:{nom:string}},suivis:[0]}');
+  assert.ok(!shape.includes('secret'));
 });

@@ -17,6 +17,14 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.10.1',
+    date: '2026-11-17',
+    title: 'Carnet : diagnostic',
+    notes: [
+      'Quand le carnet de correspondance apparaît vide, les parents voient la structure de la réponse d’ÉcoleDirecte (noms des champs seulement, jamais le contenu) pour permettre d’ajuster la lecture.',
+    ],
+  },
+  {
     version: '1.10.0',
     date: '2026-11-17',
     title: 'Carnet de correspondance',

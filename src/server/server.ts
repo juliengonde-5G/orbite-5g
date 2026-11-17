@@ -1026,7 +1026,8 @@ export function createApp(options: AppOptions): http.Server {
       async (ctx) => {
         const me = requireMember(ctx);
         const childId = await canSee(me, ctx.data.childId);
-        return ed.carnet(childId, ctx.data.refresh === true ? 0 : undefined);
+        const carnet = await ed.carnet(childId, ctx.data.refresh === true ? 0 : undefined);
+        return me.role === 'parent' ? carnet : { entries: carnet.entries };
       },
     ],
     [

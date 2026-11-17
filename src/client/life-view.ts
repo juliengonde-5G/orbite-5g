@@ -166,7 +166,11 @@ function carnetSection(child: Child, actions: Actions): HTMLElement {
       : !carnet
         ? h('div.skeleton.skeleton-row')
         : carnet.entries.length === 0
-          ? emptyState('Carnet vide', 'ÉcoleDirecte ne montre aucun mot ni suivi dans le carnet de correspondance.')
+          ? h(
+              'div',
+              emptyState('Carnet vide', 'Orbite n’a trouvé aucun mot ni suivi dans le carnet de correspondance.'),
+              carnet.shape && h('p.footnote', `Réponse d’ÉcoleDirecte (structure seulement) : ${carnet.shape}`),
+            )
           : h(
               'ul.life-list',
               carnet.entries.map((e) => carnetRow(e)),
