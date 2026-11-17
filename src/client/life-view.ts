@@ -6,7 +6,7 @@ import { h, icon } from './dom.ts';
 import { monthYear, relativeDay } from './format.ts';
 import { accent, childSwitcher, emptyState, sectionHead, sky, type Actions } from './views.ts';
 import { state } from './state.ts';
-import type { Child, LifeEvent, LifeKind, SchoolLife } from '../shared/types.ts';
+import type { Carnet, CarnetEntry, Child, LifeEvent, LifeKind, SchoolLife } from '../shared/types.ts';
 
 const KIND: Record<LifeKind, { label: string; plural: string; icon: string }> = {
   absence: { label: 'Absence', plural: 'Absences', icon: 'absent' },
@@ -127,6 +127,53 @@ export function familyLifeBlock(children: Child[], actions: Actions): HTMLElemen
   );
 }
 
+function carnetRow(e: CarnetEntry): HTMLElement {
+  return h(
+    `li.life-item.kind-${e.kind === 'suivi' ? 'autre' : 'encouragement'}`,
+    h('span.life-icon', icon(e.kind === 'suivi' ? 'shield' : 'mail', 20)),
+    h(
+      'div.life-main',
+      h(
+        'p.life-head',
+        h('b', e.title || (e.kind === 'suivi' ? 'Suivi' : 'Mot du carnet')),
+        e.needsSignature && (e.signed ? h('span.chip', 'Signé') : h('span.chip.chip-warn', 'À signer')),
+      ),
+      e.text && h('p.life-reason', e.text),
+      h('p.life-meta', e.date && h('span', relativeDay(e.date)), e.from && h('span', e.from)),
+      e.fields.map((f) => h('p.life-when', `${f.label} : ${f.value}`)),
+    ),
+  );
+}
+
+/** Carnet de correspondance : chargé à part, une panne ici ne gêne pas le reste de la vie scolaire. */
+function carnetSection(child: Child, actions: Actions): HTMLElement {
+  const entry = state.carnets.get(child.id);
+  if (!entry) actions.loadCarnet(child.id);
+  const carnet: Carnet | null = entry?.value ?? null;
+  const toSign = carnet?.entries.filter((e) => e.needsSignature && e.signed === false).length ?? 0;
+  return h(
+    'section.block',
+    sectionHead(
+      'Carnet de correspondance',
+      carnet ? h('span.counter', toSign ? `${toSign} à signer` : String(carnet.entries.length)) : undefined,
+    ),
+    entry?.error
+      ? h(
+          'div.inline-error',
+          entry.error,
+          h('button.link-button', { type: 'button', onclick: () => actions.loadCarnet(child.id, true) }, 'Réessayer'),
+        )
+      : !carnet
+        ? h('div.skeleton.skeleton-row')
+        : carnet.entries.length === 0
+          ? emptyState('Carnet vide', 'ÉcoleDirecte ne montre aucun mot ni suivi dans le carnet de correspondance.')
+          : h(
+              'ul.life-list',
+              carnet.entries.slice(0, 30).map((e) => carnetRow(e)),
+            ),
+  );
+}
+
 export function lifeView(child: Child, actions: Actions): HTMLElement {
   const entry = state.lives.get(child.id);
   const life = lifeOf(child.id, actions);
@@ -200,6 +247,7 @@ export function lifeView(child: Child, actions: Actions): HTMLElement {
               ),
             ),
           )),
+    carnetSection(child, actions),
     h(
       'p.footnote',
       'Lu sur ÉcoleDirecte, sans rien modifier. Les absences se justifient sur ÉcoleDirecte ; ce qui est masqué par le collège reste masqué ici.',

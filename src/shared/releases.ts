@@ -17,6 +17,16 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.10.0',
+    date: '2026-11-17',
+    title: 'Carnet de correspondance',
+    notes: [
+      'Le carnet de correspondance d’ÉcoleDirecte apparaît dans Vie scolaire : mots, informations et suivi, avec ceux qui sont à signer.',
+      'Orbite lit le carnet sans rien modifier : la signature se fait toujours sur ÉcoleDirecte. Chaque élève voit le sien, les parents voient tout.',
+      'Si le carnet est indisponible pour un compte, le reste de la vie scolaire s’affiche normalement.',
+    ],
+  },
+  {
     version: '1.9.0',
     date: '2026-11-15',
     title: 'Fiches adaptées à la dyslexie',

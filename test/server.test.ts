@@ -36,6 +36,7 @@ import type {
   Lesson,
   Note,
   SchoolInfo,
+  Carnet,
   SchoolLife,
 } from '../src/shared/types.ts';
 
@@ -214,6 +215,26 @@ class FakeEd implements EdClient {
   }
   async documentFile(id: string, fileType: string): Promise<EdFile> {
     return { type: 'application/pdf', name: 'piece-jointe', body: Buffer.from(`%PDF-1.4 bulletin ${id} ${fileType}`) };
+  }
+  async carnetForChild(childId: string): Promise<Carnet> {
+    return {
+      entries:
+        childId === '1:11'
+          ? [
+              {
+                id: 'cc-1',
+                kind: 'correspondance',
+                date: '2026-11-04',
+                title: 'Sortie',
+                text: 'À signer',
+                from: 'Mme Petit',
+                needsSignature: true,
+                signed: false,
+                fields: [],
+              },
+            ]
+          : [],
+    };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const base = { when: '', justified: null, by: '', comment: '' };
@@ -732,6 +753,13 @@ test('messagerie en lecture seule : boîte famille, partage avec un enfant, piè
     s = await kid.post('/api/schoollife', { childId: '1:11' });
     assert.equal(s.body.events.length, 1);
     assert.equal((await kid.post('/api/schoollife', { childId: '1:12' })).status, 404);
+
+    // Carnet de correspondance : mêmes droits que la vie scolaire.
+    s = await parent.post('/api/carnet', { childId: '1:11' });
+    assert.equal(s.body.entries[0].title, 'Sortie');
+    s = await kid.post('/api/carnet', { childId: '1:11' });
+    assert.equal(s.body.entries.length, 1);
+    assert.equal((await kid.post('/api/carnet', { childId: '1:12' })).status, 404);
 
     // Profil verrouillé sur cet appareil : le lien de pièce jointe ne sert plus.
     await kid.post('/api/logout', {});

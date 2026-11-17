@@ -1022,6 +1022,14 @@ export function createApp(options: AppOptions): http.Server {
       },
     ],
     [
+      'POST /api/carnet',
+      async (ctx) => {
+        const me = requireMember(ctx);
+        const childId = await canSee(me, ctx.data.childId);
+        return ed.carnet(childId, ctx.data.refresh === true ? 0 : undefined);
+      },
+    ],
+    [
       'POST /api/coaching',
       async (ctx) => {
         const me = requireMember(ctx);

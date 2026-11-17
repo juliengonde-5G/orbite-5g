@@ -37,6 +37,8 @@ import { isSecondary, parisDate, photoUrl } from '../shared/metrics.ts';
 import type {
   AuthResult,
   AuthState,
+  Carnet,
+  CarnetEntry,
   Child,
   Dashboard,
   Homework,
@@ -877,6 +879,20 @@ export class EcoleDirecte {
   }
 
   /**
+   * Carnet de correspondance d'un élève (lecture seule). La forme de la réponse n'est pas
+   * documentée par ÉcoleDirecte : `normalizeCarnet` accepte plusieurs variantes.
+   */
+  carnetForChild(childId: string): Promise<Carnet> {
+    return this.forChild(childId, async (studentId) => {
+      const body = await this.request<unknown>(
+        `eleves/${encodeURIComponent(studentId)}/eleveCarnetCorrespondance.awp?verbe=get`,
+        {},
+      );
+      return normalizeCarnet(body.data);
+    });
+  }
+
+  /**
    * Devoirs non faits à partir d'aujourd'hui (heure de Paris), en deux temps :
    * - `cursor === null` : premier affichage, tous les devoirs des 30 prochains
    *   jours, et un index rafraîchi s'il date de plus de 60 s ;
@@ -1635,4 +1651,108 @@ export function normalizeSchoolLife(data: RawSchoolLife | null | undefined): Sch
   }
   events.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
   return { events };
+}
+
+const CARNET_DATE = ['date', 'dateDebut', 'dateEnvoi', 'dateCreation', 'dateElement', 'dateEvenement', 'displayDate'];
+const CARNET_TITLE = ['titre', 'libelle', 'objet', 'sujet', 'typeElement', 'type', 'categorie'];
+const CARNET_TEXT = ['contenu', 'texte', 'message', 'commentaire', 'corps', 'description', 'motif', 'observation'];
+const CARNET_FROM = ['auteur', 'expediteur', 'emetteur', 'par', 'professeur', 'enseignant', 'from'];
+const CARNET_SIGN = ['signe', 'estSigne', 'signature', 'vu', 'lu'];
+const CARNET_TO_SIGN = ['aSigner', 'signatureDemandee', 'signatureObligatoire', 'avecSignature', 'signable'];
+
+function carnetValue(e: Record<string, unknown>, keys: string[]): unknown {
+  for (const k of keys) {
+    const v = e[k];
+    if (typeof v === 'string' ? v.trim() !== '' : typeof v === 'number' || typeof v === 'boolean') return v;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const inner = carnetValue(v as Record<string, unknown>, ['nom', 'libelle', 'name', 'prenom']);
+      if (inner !== undefined) return inner;
+    }
+  }
+  return undefined;
+}
+
+/** Texte en base64 (comme les devoirs) ou en clair, avec ou sans HTML. */
+function carnetText(value: unknown): string {
+  if (typeof value !== 'string') return value === undefined || value === null ? '' : String(value);
+  const raw = value.trim();
+  if (raw.length >= 8 && raw.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    const decoded = Buffer.from(raw, 'base64').toString('utf8');
+    if (!decoded.includes('\uFFFD') && /[\p{L}]{2}/u.test(decoded)) return htmlText(decoded).trim();
+  }
+  return htmlText(raw).trim();
+}
+
+function carnetDate(value: unknown): string | null {
+  const text = typeof value === 'string' ? value.trim() : '';
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const fr = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/.exec(text);
+  if (fr) return `${fr[3]}-${(fr[2] ?? '').padStart(2, '0')}-${(fr[1] ?? '').padStart(2, '0')}`;
+  return null;
+}
+
+const CARNET_SKIP_FIELD = /(^id$|id[A-Z]|Id$|token|url|lien|uid|guid|cle$|key$|hash|signature|pj|fichier)/;
+const humanLabel = (key: string): string => {
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
+/**
+ * Convertit la réponse de `eleveCarnetCorrespondance.awp`. Le format n'est pas documenté :
+ * on accepte `{ correspondances, suivis }`, un simple tableau ou des listes sous d'autres
+ * noms, et on garde le texte, la date, l'auteur et l'état de signature quand on les trouve.
+ * Les autres champs courts sont conservés tels quels pour ne rien perdre.
+ */
+export function normalizeCarnet(data: unknown): Carnet {
+  const groups: [CarnetEntry['kind'], unknown][] = [];
+  if (Array.isArray(data)) groups.push(['correspondance', data]);
+  else if (data && typeof data === 'object')
+    for (const [key, value] of Object.entries(data as Record<string, unknown>))
+      if (Array.isArray(value)) groups.push([/suivi/i.test(key) ? 'suivi' : 'correspondance', value]);
+  const entries: CarnetEntry[] = [];
+  for (const [kind, list] of groups)
+    for (const [i, e] of records<Record<string, unknown>>(list).entries()) {
+      const used = new Set<string>();
+      const take = (keys: string[]) => {
+        const v = carnetValue(e, keys);
+        if (v !== undefined) for (const k of keys) used.add(k);
+        return v;
+      };
+      const date = carnetDate(take(CARNET_DATE));
+      const title = lifeText(carnetText(take(CARNET_TITLE)));
+      const text = carnetText(take(CARNET_TEXT));
+      const from = lifeText(carnetText(take(CARNET_FROM)));
+      const toSign = homeworkDone(take(CARNET_TO_SIGN)) === true;
+      const signRaw = take(CARNET_SIGN);
+      const signed =
+        typeof signRaw === 'string' && !homeworkDone(signRaw) && signRaw !== '0' && signRaw !== 'false'
+          ? signRaw.trim() !== ''
+          : homeworkDone(signRaw);
+      const fields: { label: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(e)) {
+        if (used.has(key) || CARNET_SKIP_FIELD.test(key) || fields.length >= 8) continue;
+        if (typeof value !== 'string' && typeof value !== 'number') continue;
+        const shown = lifeText(carnetText(value));
+        if (shown && shown.length <= 200 && shown !== title && shown !== text)
+          fields.push({ label: humanLabel(key), value: shown });
+      }
+      if (!title && !text && fields.length === 0) continue;
+      entries.push({
+        id: `${kind === 'suivi' ? 'cs' : 'cc'}-${String(e.id ?? e.idElement ?? i)}`,
+        kind,
+        date,
+        title,
+        text,
+        from,
+        needsSignature: toSign,
+        signed: signed === null && toSign ? false : signed,
+        fields,
+      });
+    }
+  entries.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  return { entries: entries.slice(0, 100) };
 }

@@ -401,6 +401,26 @@ export interface SchoolLife {
   events: LifeEvent[];
 }
 
+/** Une ligne du carnet de correspondance : mot, information ou suivi lu sur ÉcoleDirecte. */
+export interface CarnetEntry {
+  id: string;
+  /** `correspondance` : mots et informations ; `suivi` : suivi de l'élève. */
+  kind: 'correspondance' | 'suivi';
+  date: string | null;
+  title: string;
+  text: string;
+  from: string;
+  needsSignature: boolean;
+  /** `null` quand ÉcoleDirecte ne dit rien. */
+  signed: boolean | null;
+  /** Autres informations lues telles quelles (libellé, valeur), en nombre limité. */
+  fields: { label: string; value: string }[];
+}
+
+export interface Carnet {
+  entries: CarnetEntry[];
+}
+
 /** État de la clé API Claude, pour le parent administrateur. La clé elle-même n'est jamais renvoyée. */
 export interface ClaudeKeyStatus {
   configured: boolean;

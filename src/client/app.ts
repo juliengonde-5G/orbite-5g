@@ -247,6 +247,7 @@ const actions: Actions = {
     tap();
     state.bags.clear();
     state.lives.clear();
+    state.carnets.clear();
     state.mail.clear();
     void loadData(true);
   },
@@ -398,6 +399,26 @@ const actions: Actions = {
       })
       .catch((e) => {
         entry.error = e instanceof ApiError ? e.message : 'Vie scolaire indisponible.';
+      })
+      .finally(() => {
+        entry.loading = false;
+        render();
+      });
+  },
+
+  loadCarnet(childId, refresh = false) {
+    const current = state.carnets.get(childId);
+    if (current?.loading) return;
+    const entry = { value: current?.value ?? null, loading: true, error: null as string | null };
+    state.carnets.set(childId, entry);
+    if (refresh) queueMicrotask(render);
+    api
+      .carnet(childId, refresh)
+      .then((carnet) => {
+        entry.value = carnet;
+      })
+      .catch((e) => {
+        entry.error = e instanceof ApiError ? e.message : 'Carnet de correspondance indisponible.';
       })
       .finally(() => {
         entry.loading = false;

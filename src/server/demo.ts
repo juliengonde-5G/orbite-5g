@@ -19,6 +19,7 @@ import type {
   Lesson,
   Note,
   SchoolInfo,
+  Carnet,
   SchoolLife,
   SubjectAverage,
 } from '../shared/types.ts';
@@ -390,6 +391,36 @@ export class DemoEd implements EdClient {
   }
   async documentFile(): Promise<EdFile> {
     return { type: 'application/pdf', name: 'document.pdf', body: DEMO_PDF };
+  }
+  async carnetForChild(childId: string): Promise<Carnet> {
+    const day = (ago: number) => new Date(Date.now() - ago * 86400000).toISOString().slice(0, 10);
+    if (Number(childId.slice(-1)) !== 1) return { entries: [] };
+    return {
+      entries: [
+        {
+          id: 'cc-1',
+          kind: 'correspondance',
+          date: day(3),
+          title: 'Sortie au musée',
+          text: 'Merci de signer l’autorisation avant vendredi.',
+          from: 'Mme Petit',
+          needsSignature: true,
+          signed: false,
+          fields: [],
+        },
+        {
+          id: 'cs-1',
+          kind: 'suivi',
+          date: day(20),
+          title: 'Point de mi-trimestre',
+          text: 'Bon investissement en classe.',
+          from: '',
+          needsSignature: false,
+          signed: null,
+          fields: [],
+        },
+      ],
+    };
   }
   async schoolLifeForChild(childId: string): Promise<SchoolLife> {
     const n = Number(childId.slice(-1));
