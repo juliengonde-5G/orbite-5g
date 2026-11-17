@@ -59,6 +59,7 @@ export interface Actions {
   loadMessage(key: string): void;
   share(key: string, childIds: string[]): void;
   loadLife(childId: string, refresh?: boolean): void;
+  loadCarnet(childId: string, refresh?: boolean): void;
   loadLessons(childId: string, date: string, refresh?: boolean): void;
 }
 

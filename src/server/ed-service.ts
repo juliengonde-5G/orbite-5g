@@ -45,6 +45,7 @@ import type {
   HomeworkPage,
   Lesson,
   SchoolInfo,
+  Carnet,
   SchoolLife,
 } from '../shared/types.ts';
 
@@ -65,6 +66,7 @@ export interface EdClient {
   mail(childId: string | null, id: string): Promise<EdMailDetail>;
   mailFile(childId: string | null, fileId: string): Promise<EdFile>;
   schoolLifeForChild(childId: string): Promise<SchoolLife>;
+  carnetForChild(childId: string): Promise<Carnet>;
   exportSession(): SavedAuth | null;
   restoreSession(saved: unknown): void;
 }
@@ -126,6 +128,7 @@ export class EdService {
   private mailCache = new Map<string, { time: number; value: EdMail[] }>();
   private mailDetails = new Map<string, { time: number; value: EdMailDetail }>();
   private lifeCache = new Map<string, { time: number; value: SchoolLife }>();
+  private carnetCache = new Map<string, { time: number; value: Carnet }>();
   /** Saisie en cours (attente de vérification) : jamais écrite sur disque. */
   private pending: { username: string; password: string; remember: boolean } | null = null;
 
@@ -251,6 +254,7 @@ export class EdService {
     this.mailCache.clear();
     this.mailDetails.clear();
     this.lifeCache.clear();
+    this.carnetCache.clear();
   }
 
   disconnect(): Promise<void> {
@@ -479,6 +483,18 @@ export class EdService {
       this.knownChild(childId);
       const value = await this.call((c) => c.schoolLifeForChild(childId));
       this.lifeCache.set(childId, { time: Date.now(), value });
+      return value;
+    });
+  }
+
+  /** Carnet de correspondance d'un élève, cache 15 min. */
+  carnet(childId: string, maxAge = 15 * 60000): Promise<Carnet> {
+    return this.serial(async () => {
+      const cached = this.carnetCache.get(childId);
+      if (cached && Date.now() - cached.time < Math.max(maxAge, this.floor)) return cached.value;
+      this.knownChild(childId);
+      const value = await this.call((c) => c.carnetForChild(childId));
+      this.carnetCache.set(childId, { time: Date.now(), value });
       return value;
     });
   }

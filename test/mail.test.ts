@@ -10,6 +10,7 @@ import {
   htmlText,
   normalizeDocuments,
   normalizeLessons,
+  normalizeCarnet,
   normalizeMail,
   normalizeSchoolLife,
   schoolYear,
@@ -136,6 +137,42 @@ test('vie scolaire : types, justification, réglages de l’établissement respe
   assert.equal(punition?.when, 'S’est déroulé le mer. 08 décembre de 13:00 à 14:00');
   assert.equal(life.events[2]?.comment, '', 'commentaire d’absence masqué');
   assert.deepEqual(normalizeSchoolLife(null), { events: [] });
+});
+
+test('carnet de correspondance : formes variées, texte en base64 ou HTML, signature, dates françaises', () => {
+  const carnet = normalizeCarnet({
+    correspondances: [
+      {
+        id: 7,
+        date: '2026-11-04',
+        libelle: 'Sortie au musée',
+        contenu: b64('<p>Merci de signer avant <b>vendredi</b>.</p>'),
+        auteur: 'Mme Petit',
+        aSigner: true,
+        signe: false,
+        classe: '6A',
+        token: 'secret',
+        urlPiece: 'https://x',
+      },
+      { id: 8, dateEnvoi: '02/11/2026', objet: 'Réunion', message: 'Réunion parents le 12.', signe: 1, aSigner: 1 },
+    ],
+    suivis: [{ id: 3, date: '2026-10-20', titre: 'Suivi', commentaire: 'RAS' }],
+  });
+  assert.equal(carnet.entries.length, 3);
+  const [first, second, third] = carnet.entries;
+  assert.equal(first?.title, 'Sortie au musée');
+  assert.equal(first?.text, 'Merci de signer avant vendredi.');
+  assert.equal(first?.from, 'Mme Petit');
+  assert.equal(first?.needsSignature, true);
+  assert.equal(first?.signed, false);
+  assert.deepEqual(first?.fields, [{ label: 'Classe', value: '6A' }], 'jeton et lien jamais repris');
+  assert.equal(second?.date, '2026-11-02', 'date française convertie');
+  assert.equal(second?.signed, true);
+  assert.equal(third?.kind, 'suivi');
+  assert.equal(third?.text, 'RAS');
+  assert.deepEqual(normalizeCarnet(null), { entries: [] });
+  assert.deepEqual(normalizeCarnet({ correspondances: 'x' }), { entries: [] });
+  assert.equal(normalizeCarnet([{ id: 1, texte: 'Mot simple' }]).entries[0]?.text, 'Mot simple');
 });
 
 test('documents : rubriques aplaties, élève rattaché, identifiants invalides écartés', () => {

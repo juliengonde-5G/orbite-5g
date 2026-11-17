@@ -22,6 +22,7 @@ import type {
   MemberView,
   PushPrefs,
   PushStatus,
+  Carnet,
   SchoolLife,
   Prefs,
   SessionInfo,
@@ -105,6 +106,7 @@ export const api = {
   message: (key: string) => call<MailDetail>('POST', '/api/message', { key }),
   share: (key: string, childIds: string[]) =>
     call<{ sharedWith: string[] }>('POST', '/api/message/share', { key, childIds }),
+  carnet: (childId: string, refresh = false) => call<Carnet>('POST', '/api/carnet', { childId, refresh }),
   schoolLife: (childId: string, refresh = false) => call<SchoolLife>('POST', '/api/schoollife', { childId, refresh }),
   documents: (refresh = false) => call<DocumentList>('POST', '/api/documents', { refresh }),
   lessons: (childId: string, date: string) =>

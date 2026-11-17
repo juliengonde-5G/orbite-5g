@@ -16,6 +16,7 @@ import type {
   MailDetail,
   MailList,
   MemberView,
+  Carnet,
   SchoolLife,
   SessionInfo,
 } from '../shared/types.ts';
@@ -96,6 +97,7 @@ export const state = {
   /** Messages non lus de la boîte principale, pour la pastille de l'onglet. */
   unread: 0,
   lives: new Map<string, Loadable<SchoolLife>>(),
+  carnets: new Map<string, Loadable<Carnet>>(),
   /** Documents de l'établissement (parents). */
   docs: { value: null, loading: false, error: null } as Loadable<DocumentList>,
   docsKind: 'all' as 'all' | DocKind,
@@ -133,6 +135,7 @@ export function resetData(): void {
   state.mail.clear();
   state.mailDetail.clear();
   state.lives.clear();
+  state.carnets.clear();
   state.lessons.clear();
   state.docs = { value: null, loading: false, error: null };
   state.docsKind = 'all';
