@@ -169,7 +169,7 @@ function carnetSection(child: Child, actions: Actions): HTMLElement {
           ? emptyState('Carnet vide', 'ÉcoleDirecte ne montre aucun mot ni suivi dans le carnet de correspondance.')
           : h(
               'ul.life-list',
-              carnet.entries.slice(0, 30).map((e) => carnetRow(e)),
+              carnet.entries.map((e) => carnetRow(e)),
             ),
   );
 }
