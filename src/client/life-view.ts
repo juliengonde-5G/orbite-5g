@@ -136,7 +136,7 @@ function carnetRow(e: CarnetEntry): HTMLElement {
       h(
         'p.life-head',
         h('b', e.title || (e.kind === 'suivi' ? 'Suivi' : 'Mot du carnet')),
-        e.needsSignature && (e.signed ? h('span.chip', 'Signé') : h('span.chip.chip-warn', 'À signer')),
+        e.needsSignature && (e.signed ? h('span.chip', 'Signé') : h('span.chip.chip-warn', 'Signature demandée')),
       ),
       e.text && h('p.life-reason', e.text),
       h('p.life-meta', e.date && h('span', relativeDay(e.date)), e.from && h('span', e.from)),
@@ -150,12 +150,19 @@ function carnetSection(child: Child, actions: Actions): HTMLElement {
   const entry = state.carnets.get(child.id);
   if (!entry) actions.loadCarnet(child.id);
   const carnet: Carnet | null = entry?.value ?? null;
-  const toSign = carnet?.entries.filter((e) => e.needsSignature && e.signed === false).length ?? 0;
+  const toSign = carnet?.entries.filter((e) => e.needsSignature && e.signed !== true).length ?? 0;
   return h(
     'section.block',
     sectionHead(
       'Carnet de correspondance',
-      carnet ? h('span.counter', toSign ? `${toSign} à signer` : String(carnet.entries.length)) : undefined,
+      carnet
+        ? h(
+            'span.counter',
+            toSign
+              ? `${toSign} signature${toSign > 1 ? 's' : ''} demandée${toSign > 1 ? 's' : ''}`
+              : String(carnet.entries.length),
+          )
+        : undefined,
     ),
     entry?.error
       ? h(
@@ -172,8 +179,12 @@ function carnetSection(child: Child, actions: Actions): HTMLElement {
               carnet.shape && h('p.footnote', `Réponse d’ÉcoleDirecte (structure seulement) : ${carnet.shape}`),
             )
           : h(
-              'ul.life-list',
-              carnet.entries.map((e) => carnetRow(e)),
+              'div',
+              h(
+                'ul.life-list',
+                carnet.entries.map((e) => carnetRow(e)),
+              ),
+              carnet.shape && h('details.footnote', h('summary', 'Détails techniques'), h('p', carnet.shape)),
             ),
   );
 }

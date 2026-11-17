@@ -265,8 +265,39 @@ test('téléchargements : le bon établissement est réactivé même si la liste
   await assert.rejects(ed.documentFile('12', '../x'), /introuvable/);
 });
 
+test('carnet réel : auteur en objet, signature demandée, nom et prénom écartés', () => {
+  const carnet = normalizeCarnet({
+    correspondances: [
+      {
+        idEleve: 1,
+        nom: 'GONDE',
+        prenom: 'Sacha',
+        dateCreation: '2026-11-16 11:48',
+        contenu: 'bonjour',
+        type: 'Mot du carnet',
+        isSignatureDemandee: true,
+        urlFichier: '',
+        idSessionRDV: 0,
+        auteur: { id: 5, nom: 'CARZON', prenom: 'Arnaud', role: 'P' },
+      },
+    ],
+    suivis: [],
+  });
+  const e = carnet.entries[0];
+  assert.equal(e?.from, 'A. CARZON');
+  assert.equal(e?.needsSignature, true);
+  assert.equal(e?.signed, false);
+  assert.equal(e?.date, '2026-11-16');
+  assert.equal(e?.title, 'Mot du carnet');
+  assert.deepEqual(e?.fields, []);
+});
+
 test('structure d’une réponse : noms et types, jamais les valeurs', () => {
   const shape = describeShape({ correspondances: [{ id: 1, contenu: 'secret', auteur: { nom: 'X' } }], suivis: [] });
   assert.equal(shape, '{correspondances:[1]{id:number,contenu:string,auteur:{nom:string}},suivis:[0]}');
   assert.ok(!shape.includes('secret'));
+});
+
+test('structure d’une liste : champs réunis sur plusieurs éléments', () => {
+  assert.equal(describeShape([{ a: 1 }, { b: 'x' }]), '[2]{a:number,b:string}');
 });
