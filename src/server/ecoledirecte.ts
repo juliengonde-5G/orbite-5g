@@ -888,7 +888,7 @@ export class EcoleDirecte {
         `eleves/${encodeURIComponent(studentId)}/eleveCarnetCorrespondance.awp?verbe=get`,
         {},
       );
-      return normalizeCarnet(body.data);
+      return { ...normalizeCarnet(body.data), shape: describeShape(body.data) };
     });
   }
 
@@ -1755,4 +1755,22 @@ export function normalizeCarnet(data: unknown): Carnet {
     }
   entries.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
   return { entries: entries.slice(0, 100) };
+}
+
+/**
+ * Structure d'une réponse (noms et types des champs, jamais les valeurs) : sert à ajuster la
+ * lecture d'une réponse ÉcoleDirecte non documentée sans exposer le contenu des messages.
+ */
+export function describeShape(value: unknown, depth = 0): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) {
+    const first = value.find((v) => v !== null && v !== undefined);
+    return `[${value.length}]${first === undefined ? '' : describeShape(first, depth + 1)}`;
+  }
+  if (typeof value !== 'object') return typeof value;
+  if (depth >= 5) return '{…}';
+  const parts = Object.entries(value as Record<string, unknown>)
+    .slice(0, 30)
+    .map(([k, v]) => `${k.slice(0, 40)}:${describeShape(v, depth + 1)}`);
+  return `{${parts.join(',')}}`.slice(0, 1500);
 }
