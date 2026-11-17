@@ -17,6 +17,15 @@ export interface Release {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: '1.10.2',
+    date: '2026-11-17',
+    title: 'Carnet : auteur et signatures',
+    notes: [
+      'Le carnet de correspondance affiche l’auteur sous la forme « A. Nom » et signale les mots dont la signature est demandée.',
+      'Les mentions répétées du nom et du prénom de l’élève ne sont plus affichées.',
+    ],
+  },
+  {
     version: '1.10.1',
     date: '2026-11-17',
     title: 'Carnet : diagnostic',

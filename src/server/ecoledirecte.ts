@@ -1657,8 +1657,15 @@ const CARNET_DATE = ['date', 'dateDebut', 'dateEnvoi', 'dateCreation', 'dateElem
 const CARNET_TITLE = ['titre', 'libelle', 'objet', 'sujet', 'typeElement', 'type', 'categorie'];
 const CARNET_TEXT = ['contenu', 'texte', 'message', 'commentaire', 'corps', 'description', 'motif', 'observation'];
 const CARNET_FROM = ['auteur', 'expediteur', 'emetteur', 'par', 'professeur', 'enseignant', 'from'];
-const CARNET_SIGN = ['signe', 'estSigne', 'signature', 'vu', 'lu'];
-const CARNET_TO_SIGN = ['aSigner', 'signatureDemandee', 'signatureObligatoire', 'avecSignature', 'signable'];
+const CARNET_SIGN = ['signe', 'estSigne', 'isSigne', 'dateSignature', 'signeLe', 'signature', 'vu', 'lu'];
+const CARNET_TO_SIGN = [
+  'isSignatureDemandee',
+  'aSigner',
+  'signatureDemandee',
+  'signatureObligatoire',
+  'avecSignature',
+  'signable',
+];
 
 function carnetValue(e: Record<string, unknown>, keys: string[]): unknown {
   for (const k of keys) {
@@ -1692,7 +1699,8 @@ function carnetDate(value: unknown): string | null {
   return null;
 }
 
-const CARNET_SKIP_FIELD = /(^id$|id[A-Z]|Id$|token|url|lien|uid|guid|cle$|key$|hash|signature|pj|fichier)/;
+const CARNET_SKIP_FIELD =
+  /(^(nom|prenom|particule)$|^id$|id[A-Z]|Id$|token|url|lien|uid|guid|cle$|key$|hash|signature|pj|fichier)/;
 const humanLabel = (key: string): string => {
   const spaced = key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -1725,7 +1733,12 @@ export function normalizeCarnet(data: unknown): Carnet {
       const date = carnetDate(take(CARNET_DATE));
       const title = lifeText(carnetText(take(CARNET_TITLE)));
       const text = carnetText(take(CARNET_TEXT));
-      const from = lifeText(carnetText(take(CARNET_FROM)));
+      const author = e.auteur && typeof e.auteur === 'object' ? (e.auteur as Record<string, unknown>) : null;
+      const authorName = author
+        ? `${typeof author.prenom === 'string' && author.prenom ? `${author.prenom.charAt(0).toUpperCase()}. ` : ''}${typeof author.nom === 'string' ? author.nom : ''}`.trim()
+        : '';
+      if (authorName) used.add('auteur');
+      const from = authorName || lifeText(carnetText(take(CARNET_FROM)));
       const toSign = homeworkDone(take(CARNET_TO_SIGN)) === true;
       const signRaw = take(CARNET_SIGN);
       const signed =
@@ -1764,8 +1777,13 @@ export function normalizeCarnet(data: unknown): Carnet {
 export function describeShape(value: unknown, depth = 0): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) {
-    const first = value.find((v) => v !== null && v !== undefined);
-    return `[${value.length}]${first === undefined ? '' : describeShape(first, depth + 1)}`;
+    const items = value.filter((v) => v !== null && v !== undefined);
+    const objects = items.filter((v) => typeof v === 'object' && !Array.isArray(v)) as Record<string, unknown>[];
+    // Les éléments d'une liste n'ont pas tous les mêmes champs : on réunit ceux des 30 premiers.
+    const merged: Record<string, unknown> = {};
+    for (const o of objects.slice(0, 30)) for (const [k, v] of Object.entries(o)) merged[k] ??= v;
+    const sample = objects.length ? merged : items[0];
+    return `[${value.length}]${sample === undefined ? '' : describeShape(sample, depth + 1)}`;
   }
   if (typeof value !== 'object') return typeof value;
   if (depth >= 5) return '{…}';
